@@ -112,6 +112,47 @@ curl -X POST http://localhost:8000/candidates/query \
 2. Hiring query → AMP Engine → ZK-proof verification → Regime-adjusted scoring
 3. Results ranked and returned anonymously
 
+## 📊 Data Population
+
+The system includes an automated data populator that fetches real-time market data and generates realistic candidate profiles.
+
+### Quick Start
+```bash
+# Populate 50 sample candidates
+python populate_data.py --populate-candidates 50
+
+# Update market data once
+python populate_data.py --mode once
+
+# Continuous updates every 5 minutes
+python populate_data.py --mode continuous --interval 300
+```
+
+### Features
+
+- **Real-time Market Data**: Fetches live gold/silver prices and VIX from financial APIs
+- **Realistic Candidates**: Generates profiles with SBTs, skills, certifications, and experience
+- **Continuous Updates**: Monitors market conditions with configurable intervals
+- **Fallback Simulation**: Works offline with realistic simulated data
+
+### Full Setup
+```bash
+# Complete system initialization
+python populate_data.py --reset --populate-candidates 100 --mode continuous
+```
+
+⚠️ **Warning**: The `--reset` flag deletes all existing data. Use with caution.
+
+### Options
+
+| Flag | Description |
+|------|-------------|
+| `--mode {once\|continuous}` | Update mode |
+| `--interval SECONDS` | Update interval for continuous mode (default: 300) |
+| `--populate-candidates N` | Generate N candidate profiles |
+| `--reset` | Reset system (deletes all data) |
+| `--status` | Show system status |
+
 ## White Papers
 
 This implementation is based on two foundational white papers:
