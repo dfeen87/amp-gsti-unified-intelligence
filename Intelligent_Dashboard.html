@@ -1,0 +1,1129 @@
+import React, { useState, useEffect } from 'react';
+import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar } from 'recharts';
+import { TrendingUp, TrendingDown, Activity, Users, Target, AlertTriangle, CheckCircle, RefreshCw, Database, Zap } from 'lucide-react';
+
+const API_BASE = 'http://localhost:8000';
+
+const REGIME_COLORS = {
+  bullish: '#10b981',
+  bearish: '#ef4444',
+  neutral: '#f59e0b'
+};
+
+const AMP_GSTI_Dashboard = () => {
+  const [marketState, setMarketState] = useState(null);
+  const [candidates, setCandidates] = useState([]);
+  const [systemStatus, setSystemStatus] = useState(null);
+  const [queryResults, setQueryResults] = useState(null);
+  const [stats, setStats] = useState(null);
+  const [forecast, setForecast] = useState(null);
+  const [talentFlow, setTalentFlow] = useState(null);
+  const [loading, setLoading] = useState({});
+  const [activeTab, setActiveTab] = useState('overview');
+  
+  // Market update form state
+  const [marketForm, setMarketForm] = useState({
+    gold_price: 2500,
+    silver_price: 25,
+    CR: 0.85,
+    ES: 0.75,
+    BT: 0.80,
+    RG: 1.05,
+    NCB: 0.1,
+    CS: 0.90,
+    BR: 0.85,
+    CA: 0.70,
+    SS: 0.80,
+    NCB_consumer: 0.05,
+    VIX: 20,
+    M_A_Surges: false
+  });
+
+  // Query form state
+  const [queryForm, setQueryForm] = useState({
+    required_skills: '',
+    required_character: '',
+    required_loyalty: '',
+    min_predictive_score: 70,
+    consider_market_regime: true
+  });
+
+  // Candidate form state
+  const [candidateForm, setCandidateForm] = useState({
+    wallet_address: '',
+    years_experience: 5,
+    base_predictive_score: 75,
+    tokens: []
+  });
+
+  const [newToken, setNewToken] = useState({
+    type: 'skill',
+    name: '',
+    issuer: '',
+    issue_date: new Date().toISOString().split('T')[0]
+  });
+
+  // Fetch functions
+  const fetchMarketState = async () => {
+    setLoading(prev => ({ ...prev, market: true }));
+    try {
+      const res = await fetch(`${API_BASE}/market/gsti`);
+      if (res.ok) {
+        const data = await res.json();
+        setMarketState(data.data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch market state:', err);
+    }
+    setLoading(prev => ({ ...prev, market: false }));
+  };
+
+  const fetchSystemStatus = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/system/status`);
+      if (res.ok) {
+        const data = await res.json();
+        setSystemStatus(data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch system status:', err);
+    }
+  };
+
+  const fetchStats = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/candidates/stats`);
+      if (res.ok) {
+        const data = await res.json();
+        setStats(data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch stats:', err);
+    }
+  };
+
+  const fetchForecast = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/intelligence/hiring-forecast`);
+      if (res.ok) {
+        const data = await res.json();
+        setForecast(data.forecast);
+      }
+    } catch (err) {
+      console.error('Failed to fetch forecast:', err);
+    }
+  };
+
+  const fetchTalentFlow = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/intelligence/talent-flow`);
+      if (res.ok) {
+        const data = await res.json();
+        setTalentFlow(data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch talent flow:', err);
+    }
+  };
+
+  // Update market state
+  const updateMarketState = async () => {
+    setLoading(prev => ({ ...prev, update: true }));
+    try {
+      const params = new URLSearchParams(marketForm);
+      const res = await fetch(`${API_BASE}/market/gsti/update?${params}`, {
+        method: 'POST'
+      });
+      if (res.ok) {
+        await fetchMarketState();
+        await fetchForecast();
+      }
+    } catch (err) {
+      console.error('Failed to update market:', err);
+    }
+    setLoading(prev => ({ ...prev, update: false }));
+  };
+
+  // Register candidate
+  const registerCandidate = async () => {
+    setLoading(prev => ({ ...prev, register: true }));
+    try {
+      const res = await fetch(`${API_BASE}/candidates/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(candidateForm)
+      });
+      if (res.ok) {
+        setCandidateForm({
+          wallet_address: '',
+          years_experience: 5,
+          base_predictive_score: 75,
+          tokens: []
+        });
+        await fetchStats();
+        await fetchSystemStatus();
+      }
+    } catch (err) {
+      console.error('Failed to register candidate:', err);
+    }
+    setLoading(prev => ({ ...prev, register: false }));
+  };
+
+  // Query candidates
+  const queryCandidates = async () => {
+    setLoading(prev => ({ ...prev, query: true }));
+    try {
+      const payload = {
+        required_skills: queryForm.required_skills.split(',').map(s => s.trim()).filter(Boolean),
+        required_character: queryForm.required_character.split(',').map(s => s.trim()).filter(Boolean),
+        required_loyalty: queryForm.required_loyalty.split(',').map(s => s.trim()).filter(Boolean),
+        min_predictive_score: parseFloat(queryForm.min_predictive_score),
+        consider_market_regime: queryForm.consider_market_regime
+      };
+      
+      const res = await fetch(`${API_BASE}/candidates/query`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setQueryResults(data);
+      }
+    } catch (err) {
+      console.error('Failed to query candidates:', err);
+    }
+    setLoading(prev => ({ ...prev, query: false }));
+  };
+
+  useEffect(() => {
+    fetchSystemStatus();
+    fetchMarketState();
+    fetchStats();
+    fetchForecast();
+    fetchTalentFlow();
+    
+    const interval = setInterval(() => {
+      fetchSystemStatus();
+      fetchMarketState();
+      fetchStats();
+    }, 30000);
+    
+    return () => clearInterval(interval);
+  }, []);
+
+  const addToken = () => {
+    if (newToken.name && newToken.issuer) {
+      setCandidateForm(prev => ({
+        ...prev,
+        tokens: [...prev.tokens, { ...newToken, verification_hash: '0x' + Math.random().toString(36).substr(2, 16) }]
+      }));
+      setNewToken({
+        type: 'skill',
+        name: '',
+        issuer: '',
+        issue_date: new Date().toISOString().split('T')[0]
+      });
+    }
+  };
+
+  const removeToken = (index) => {
+    setCandidateForm(prev => ({
+      ...prev,
+      tokens: prev.tokens.filter((_, i) => i !== index)
+    }));
+  };
+
+  // Prepare chart data
+  const getRegimeData = () => {
+    if (!marketState) return [];
+    const gsti = marketState.gsti_score || 0;
+    return [
+      { name: 'Bullish Zone', value: gsti > 0.05 ? 1 : 0, fill: REGIME_COLORS.bullish },
+      { name: 'Neutral Zone', value: gsti >= -0.05 && gsti <= 0.05 ? 1 : 0, fill: REGIME_COLORS.neutral },
+      { name: 'Bearish Zone', value: gsti < -0.05 ? 1 : 0, fill: REGIME_COLORS.bearish }
+    ];
+  };
+
+  const getGoodwillData = () => {
+    if (!marketState) return [];
+    return [
+      { metric: 'General', value: (marketState.general_goodwill || 0) * 100 },
+      { metric: 'Consumer', value: (marketState.consumer_goodwill || 0) * 100 },
+      { metric: 'Unified', value: (marketState.unified_goodwill_score || 0) * 100 }
+    ];
+  };
+
+  const getTokenDistribution = () => {
+    if (!stats || !stats.token_distribution) return [];
+    return Object.entries(stats.token_distribution).map(([key, value]) => ({
+      name: key.split(':')[1] || key,
+      value: value,
+      type: key.split(':')[0]
+    }));
+  };
+
+  const MetricCard = ({ title, value, subtitle, icon: Icon, trend, color = 'blue' }) => {
+    const colors = {
+      blue: 'bg-blue-500',
+      green: 'bg-green-500',
+      red: 'bg-red-500',
+      yellow: 'bg-yellow-500',
+      purple: 'bg-purple-500'
+    };
+
+    return (
+      <div className="bg-white rounded-lg shadow p-6 border border-gray-200">
+        <div className="flex items-start justify-between">
+          <div className="flex-1">
+            <p className="text-sm font-medium text-gray-600 mb-1">{title}</p>
+            <p className="text-3xl font-bold text-gray-900">{value}</p>
+            {subtitle && <p className="text-sm text-gray-500 mt-1">{subtitle}</p>}
+          </div>
+          <div className={`p-3 rounded-lg ${colors[color]}`}>
+            <Icon className="w-6 h-6 text-white" />
+          </div>
+        </div>
+        {trend && (
+          <div className="mt-4 flex items-center text-sm">
+            {trend > 0 ? (
+              <TrendingUp className="w-4 h-4 text-green-500 mr-1" />
+            ) : (
+              <TrendingDown className="w-4 h-4 text-red-500 mr-1" />
+            )}
+            <span className={trend > 0 ? 'text-green-600' : 'text-red-600'}>
+              {Math.abs(trend).toFixed(2)}%
+            </span>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const RegimeBadge = ({ regime }) => {
+    const colors = {
+      bullish: 'bg-green-100 text-green-800',
+      bearish: 'bg-red-100 text-red-800',
+      neutral: 'bg-yellow-100 text-yellow-800'
+    };
+    
+    return (
+      <span className={`px-3 py-1 rounded-full text-sm font-medium ${colors[regime] || colors.neutral}`}>
+        {regime?.toUpperCase() || 'UNKNOWN'}
+      </span>
+    );
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      {/* Header */}
+      <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-lg">
+        <div className="max-w-7xl mx-auto px-6 py-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-3xl font-bold mb-2">AMP-GSTI Intelligence Platform</h1>
+              <p className="text-blue-100">Merit-Based Talent Matching with Macroeconomic Intelligence</p>
+            </div>
+            <div className="flex items-center gap-4">
+              {systemStatus && (
+                <div className="flex items-center gap-2 bg-white/10 rounded-lg px-4 py-2">
+                  <Activity className="w-5 h-5 animate-pulse" />
+                  <span className="font-medium">System Operational</span>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Navigation Tabs */}
+      <div className="bg-white border-b border-gray-200">
+        <div className="max-w-7xl mx-auto px-6">
+          <nav className="flex space-x-8">
+            {['overview', 'market', 'candidates', 'query', 'intelligence'].map(tab => (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                className={`py-4 px-2 border-b-2 font-medium text-sm transition-colors ${
+                  activeTab === tab
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                {tab.charAt(0).toUpperCase() + tab.slice(1)}
+              </button>
+            ))}
+          </nav>
+        </div>
+      </div>
+
+      {/* Main Content */}
+      <div className="max-w-7xl mx-auto px-6 py-8">
+        {/* Overview Tab */}
+        {activeTab === 'overview' && (
+          <div className="space-y-6">
+            {/* Key Metrics */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              <MetricCard
+                title="Market Regime"
+                value={marketState ? <RegimeBadge regime={marketState.market_regime} /> : 'Loading...'}
+                subtitle={marketState ? `GSTI: ${marketState.gsti_score?.toFixed(3)}` : ''}
+                icon={Activity}
+                color={marketState?.market_regime === 'bullish' ? 'green' : marketState?.market_regime === 'bearish' ? 'red' : 'yellow'}
+              />
+              <MetricCard
+                title="Gold/Silver Ratio"
+                value={marketState?.gsr?.toFixed(2) || '--'}
+                subtitle={`Gold: $${marketState?.gold_price || '--'}`}
+                icon={TrendingUp}
+                color="yellow"
+              />
+              <MetricCard
+                title="Total Candidates"
+                value={stats?.total_candidates || 0}
+                subtitle={`Avg Score: ${stats?.average_predictive_score?.toFixed(1) || '--'}`}
+                icon={Users}
+                color="blue"
+              />
+              <MetricCard
+                title="Goodwill Momentum"
+                value={marketState?.goodwill_momentum ? `${(marketState.goodwill_momentum * 100).toFixed(2)}%` : '--'}
+                subtitle="Market confidence trend"
+                icon={Target}
+                color="purple"
+              />
+            </div>
+
+            {/* Charts Row */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Market Regime Visualization */}
+              <div className="bg-white rounded-lg shadow p-6">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Market Regime Status</h3>
+                <ResponsiveContainer width="100%" height={250}>
+                  <PieChart>
+                    <Pie
+                      data={getRegimeData()}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={60}
+                      outerRadius={90}
+                      paddingAngle={5}
+                      dataKey="value"
+                    >
+                      {getRegimeData().map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.fill} />
+                      ))}
+                    </Pie>
+                    <Tooltip />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+
+              {/* Goodwill Metrics */}
+              <div className="bg-white rounded-lg shadow p-6">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Goodwill Components</h3>
+                <ResponsiveContainer width="100%" height={250}>
+                  <BarChart data={getGoodwillData()}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="metric" />
+                    <YAxis />
+                    <Tooltip />
+                    <Bar dataKey="value" fill="#3b82f6" />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            {/* Forecast and Signals */}
+            {forecast && (
+              <div className="bg-gradient-to-br from-blue-50 to-purple-50 rounded-lg shadow p-6 border border-blue-200">
+                <div className="flex items-start justify-between mb-4">
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-900">Hiring Strategy Forecast</h3>
+                    <p className="text-sm text-gray-600">{forecast.forecast_horizon} outlook</p>
+                  </div>
+                  <RegimeBadge regime={forecast.current_regime} />
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+                  <div className="bg-white rounded-lg p-4">
+                    <p className="text-sm font-medium text-gray-600 mb-2">Recommendation</p>
+                    <p className="text-gray-900">{forecast.recommendation}</p>
+                  </div>
+                  <div className="bg-white rounded-lg p-4">
+                    <p className="text-sm font-medium text-gray-600 mb-2">Risk Factors</p>
+                    <ul className="text-sm text-gray-900 space-y-1">
+                      {forecast.risk_factors?.map((risk, i) => (
+                        <li key={i} className="flex items-start">
+                          <AlertTriangle className="w-4 h-4 text-yellow-500 mr-2 mt-0.5 flex-shrink-0" />
+                          {risk}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div className="bg-white rounded-lg p-4">
+                    <p className="text-sm font-medium text-gray-600 mb-2">Opportunity Level</p>
+                    <p className="text-gray-900">{forecast.opportunity}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Market Tab */}
+        {activeTab === 'market' && (
+          <div className="space-y-6">
+            <div className="bg-white rounded-lg shadow p-6">
+              <h3 className="text-lg font-semibold text-gray-900 mb-6">Update Market Intelligence</h3>
+              
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div>
+                  <h4 className="font-medium text-gray-700 mb-4">Precious Metals</h4>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Gold Price (USD/oz)</label>
+                      <input
+                        type="number"
+                        value={marketForm.gold_price}
+                        onChange={(e) => setMarketForm({...marketForm, gold_price: parseFloat(e.target.value)})}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Silver Price (USD/oz)</label>
+                      <input
+                        type="number"
+                        value={marketForm.silver_price}
+                        onChange={(e) => setMarketForm({...marketForm, silver_price: parseFloat(e.target.value)})}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <h4 className="font-medium text-gray-700 mb-4">General Goodwill</h4>
+                  <div className="space-y-4">
+                    {['CR', 'ES', 'BT', 'RG', 'NCB'].map(field => (
+                      <div key={field}>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">{field}</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={marketForm[field]}
+                          onChange={(e) => setMarketForm({...marketForm, [field]: parseFloat(e.target.value)})}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <h4 className="font-medium text-gray-700 mb-4">Consumer Goodwill & Market</h4>
+                  <div className="space-y-4">
+                    {['CS', 'BR', 'CA', 'SS', 'VIX'].map(field => (
+                      <div key={field}>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">{field}</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={marketForm[field]}
+                          onChange={(e) => setMarketForm({...marketForm, [field]: parseFloat(e.target.value)})}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                        />
+                      </div>
+                    ))}
+                    <div className="flex items-center">
+                      <input
+                        type="checkbox"
+                        checked={marketForm.M_A_Surges}
+                        onChange={(e) => setMarketForm({...marketForm, M_A_Surges: e.target.checked})}
+                        className="mr-2"
+                      />
+                      <label className="text-sm font-medium text-gray-700">M&A Surges</label>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <button
+                onClick={updateMarketState}
+                disabled={loading.update}
+                className="mt-6 w-full bg-blue-600 text-white px-4 py-3 rounded-md font-medium hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center"
+              >
+                {loading.update ? (
+                  <>
+                    <RefreshCw className="w-5 h-5 mr-2 animate-spin" />
+                    Updating...
+                  </>
+                ) : (
+                  <>
+                    <Zap className="w-5 h-5 mr-2" />
+                    Update GSTI Metrics
+                  </>
+                )}
+              </button>
+            </div>
+
+            {/* Current Market State Display */}
+            {marketState && (
+              <div className="bg-white rounded-lg shadow p-6">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Current Market State</h3>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div>
+                    <p className="text-sm text-gray-600">GSR</p>
+                    <p className="text-2xl font-bold text-gray-900">{marketState.gsr?.toFixed(2)}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600">GSTI Score</p>
+                    <p className="text-2xl font-bold text-gray-900">{marketState.gsti_score?.toFixed(3)}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600">UGS</p>
+                    <p className="text-2xl font-bold text-gray-900">{marketState.unified_goodwill_score?.toFixed(3)}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600">VIX</p>
+                    <p className="text-2xl font-bold text-gray-900">{marketState.vix}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Candidates Tab */}
+        {activeTab === 'candidates' && (
+          <div className="space-y-6">
+            <div className="bg-white rounded-lg shadow p-6">
+              <h3 className="text-lg font-semibold text-gray-900 mb-6">Register New Candidate</h3>
+              
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Wallet Address</label>
+                  <input
+                    type="text"
+                    value={candidateForm.wallet_address}
+                    onChange={(e) => setCandidateForm({...candidateForm, wallet_address: e.target.value})}
+                    placeholder="0x..."
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Years Experience</label>
+                    <input
+                      type="number"
+                      value={candidateForm.years_experience}
+                      onChange={(e) => setCandidateForm({...candidateForm, years_experience: parseInt(e.target.value)})}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Base Predictive Score</label>
+                    <input
+                      type="number"
+                      value={candidateForm.base_predictive_score}
+                      onChange={(e) => setCandidateForm({...candidateForm, base_predictive_score: parseFloat(e.target.value)})}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                    />
+                  </div>
+                </div>
+
+                <div className="border-t pt-4">
+                  <h4 className="font-medium text-gray-700 mb-3">Soulbound Tokens</h4>
+                  
+                  <div className="grid grid-cols-4 gap-3 mb-3">
+                    <select
+                      value={newToken.type}
+                      onChange={(e) => setNewToken({...newToken, type: e.target.value})}
+                      className="px-3 py-2 border border-gray-300 rounded-md"
+                    >
+                      <option value="skill">Skill</option>
+                      <option value="character">Character</option>
+                      <option value="loyalty">Loyalty</option>
+                      <option value="project">Project</option>
+                      <option value="certification">Certification</option>
+                    </select>
+                    <input
+                      type="text"
+                      value={newToken.name}
+                      onChange={(e) => setNewToken({...newToken, name: e.target.value})}
+                      placeholder="Token name"
+                      className="px-3 py-2 border border-gray-300 rounded-md"
+                    />
+                    <input
+                      type="text"
+                      value={newToken.issuer}
+                      onChange={(e) => setNewToken({...newToken, issuer: e.target.value})}
+                      placeholder="Issuer"
+                      className="px-3 py-2 border border-gray-300 rounded-md"
+                    />
+                    <button
+                      onClick={addToken}
+                      className="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700"
+                    >
+                      Add Token
+                    </button>
+                  </div>
+
+                  {candidateForm.tokens.length > 0 && (
+                    <div className="space-y-2">
+                      {candidateForm.tokens.map((token, idx) => (
+                        <div key={idx} className="flex items-center justify-between bg-gray-50 p-3 rounded-md">
+                          <div className="flex items-center space-x-3">
+                            <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs font-medium">
+                              {token.type}
+                            </span>
+                            <span className="font-medium">{token.name}</span>
+                            <span className="text-sm text-gray-600">by {token.issuer}</span>
+                          </div>
+                          <button
+                            onClick={() => removeToken(idx)}
+                            className="text-red-600 hover:text-red-800"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  onClick={registerCandidate}
+                  disabled={loading.register || !candidateForm.wallet_address}
+                  className="w-full bg-blue-600 text-white px-4 py-3 rounded-md font-medium hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {loading.register ? (
+                    <>
+                      <RefreshCw className="w-5 h-5 mr-2 animate-spin inline" />
+                      Registering...
+                    </>
+                  ) : (
+                    <>
+                      <Database className="w-5 h-5 mr-2 inline" />
+                      Register Candidate
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            {/* Candidate Statistics */}
+            {stats && (
+              <div className="bg-white rounded-lg shadow p-6">
+                <h3 className="text-lg font-semibold text-gray-900 mb-6">Candidate Pool Statistics</h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div className="text-center p-4 bg-blue-50 rounded-lg">
+                    <p className="text-3xl font-bold text-blue-600">{stats.total_candidates}</p>
+                    <p className="text-sm text-gray-600 mt-1">Total Candidates</p>
+                  </div>
+                  <div className="text-center p-4 bg-green-50 rounded-lg">
+                    <p className="text-3xl font-bold text-green-600">{stats.average_predictive_score?.toFixed(1)}</p>
+                    <p className="text-sm text-gray-600 mt-1">Avg Predictive Score</p>
+                  </div>
+                  <div className="text-center p-4 bg-purple-50 rounded-lg">
+                    <p className="text-3xl font-bold text-purple-600">{stats.average_experience?.toFixed(1)}</p>
+                    <p className="text-sm text-gray-600 mt-1">Avg Years Experience</p>
+                  </div>
+                </div>
+
+                {/* Token Distribution Chart */}
+                {getTokenDistribution().length > 0 && (
+                  <div className="mt-6">
+                    <h4 className="font-medium text-gray-700 mb-4">Token Distribution</h4>
+                    <ResponsiveContainer width="100%" height={300}>
+                      <BarChart data={getTokenDistribution()}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="name" angle={-45} textAnchor="end" height={100} />
+                        <YAxis />
+                        <Tooltip />
+                        <Legend />
+                        <Bar dataKey="value" fill="#3b82f6" />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Query Tab */}
+        {activeTab === 'query' && (
+          <div className="space-y-6">
+            <div className="bg-white rounded-lg shadow p-6">
+              <h3 className="text-lg font-semibold text-gray-900 mb-6">Query Candidates with ZK-Proof Matching</h3>
+              
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Required Skills (comma-separated)
+                  </label>
+                  <input
+                    type="text"
+                    value={queryForm.required_skills}
+                    onChange={(e) => setQueryForm({...queryForm, required_skills: e.target.value})}
+                    placeholder="Python Mastery, Machine Learning, etc."
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Required Character Traits (comma-separated)
+                  </label>
+                  <input
+                    type="text"
+                    value={queryForm.required_character}
+                    onChange={(e) => setQueryForm({...queryForm, required_character: e.target.value})}
+                    placeholder="Leadership, Team Player, etc."
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Required Loyalty Markers (comma-separated)
+                  </label>
+                  <input
+                    type="text"
+                    value={queryForm.required_loyalty}
+                    onChange={(e) => setQueryForm({...queryForm, required_loyalty: e.target.value})}
+                    placeholder="Long-term Commitment, Company Advocate, etc."
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Minimum Predictive Score: {queryForm.min_predictive_score}
+                  </label>
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    value={queryForm.min_predictive_score}
+                    onChange={(e) => setQueryForm({...queryForm, min_predictive_score: parseFloat(e.target.value)})}
+                    className="w-full"
+                  />
+                </div>
+
+                <div className="flex items-center">
+                  <input
+                    type="checkbox"
+                    checked={queryForm.consider_market_regime}
+                    onChange={(e) => setQueryForm({...queryForm, consider_market_regime: e.target.checked})}
+                    className="mr-2"
+                  />
+                  <label className="text-sm font-medium text-gray-700">
+                    Apply Market Regime Adjustments
+                  </label>
+                </div>
+
+                <button
+                  onClick={queryCandidates}
+                  disabled={loading.query}
+                  className="w-full bg-purple-600 text-white px-4 py-3 rounded-md font-medium hover:bg-purple-700 disabled:opacity-50 flex items-center justify-center"
+                >
+                  {loading.query ? (
+                    <>
+                      <RefreshCw className="w-5 h-5 mr-2 animate-spin" />
+                      Querying...
+                    </>
+                  ) : (
+                    <>
+                      <Target className="w-5 h-5 mr-2" />
+                      Execute Query
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            {/* Query Results */}
+            {queryResults && (
+              <div className="bg-white rounded-lg shadow p-6">
+                <div className="flex items-center justify-between mb-6">
+                  <h3 className="text-lg font-semibold text-gray-900">Query Results</h3>
+                  <div className="flex items-center space-x-4">
+                    <span className="text-sm text-gray-600">
+                      {queryResults.total_candidates_screened} candidates screened
+                    </span>
+                    <span className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm font-medium">
+                      {queryResults.matches_found} matches
+                    </span>
+                  </div>
+                </div>
+
+                {queryResults.regime_adjustment_applied && (
+                  <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg flex items-start">
+                    <CheckCircle className="w-5 h-5 text-blue-600 mr-2 mt-0.5 flex-shrink-0" />
+                    <div>
+                      <p className="text-sm font-medium text-blue-900">
+                        Market regime adjustments applied
+                      </p>
+                      <p className="text-sm text-blue-700">
+                        Scores adjusted for <RegimeBadge regime={queryResults.market_regime} /> market conditions
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {queryResults.matches.length === 0 ? (
+                  <div className="text-center py-12">
+                    <AlertTriangle className="w-12 h-12 text-gray-400 mx-auto mb-3" />
+                    <p className="text-gray-600">No candidates match the specified criteria</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {queryResults.matches.map((match, idx) => (
+                      <div
+                        key={idx}
+                        className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow"
+                      >
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="flex items-center space-x-3">
+                            <span className="text-lg font-bold text-gray-700">#{idx + 1}</span>
+                            <span className="text-sm text-gray-500 font-mono">
+                              {match.wallet_address.slice(0, 10)}...{match.wallet_address.slice(-8)}
+                            </span>
+                            <CheckCircle className="w-5 h-5 text-green-500" />
+                            <span className="text-xs text-green-600 font-medium">ZK-Verified</span>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-2xl font-bold text-purple-600">
+                              {match.regime_adjusted_score.toFixed(1)}
+                            </p>
+                            <p className="text-xs text-gray-500">Adjusted Score</p>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-4 gap-4 text-sm">
+                          <div>
+                            <p className="text-gray-600">Base Score</p>
+                            <p className="font-medium text-gray-900">{match.base_score.toFixed(1)}</p>
+                          </div>
+                          <div>
+                            <p className="text-gray-600">Regime Adjustment</p>
+                            <p className={`font-medium ${match.regime_adjustment > 0 ? 'text-green-600' : match.regime_adjustment < 0 ? 'text-red-600' : 'text-gray-900'}`}>
+                              {match.regime_adjustment > 0 ? '+' : ''}{match.regime_adjustment.toFixed(2)}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-gray-600">Experience</p>
+                            <p className="font-medium text-gray-900">{match.years_experience} years</p>
+                          </div>
+                          <div>
+                            <p className="text-gray-600">Credentials</p>
+                            <p className="font-medium text-gray-900">{match.token_count} tokens</p>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Intelligence Tab */}
+        {activeTab === 'intelligence' && (
+          <div className="space-y-6">
+            {/* Hiring Forecast */}
+            {forecast && (
+              <div className="bg-white rounded-lg shadow p-6">
+                <h3 className="text-lg font-semibold text-gray-900 mb-6">Strategic Hiring Forecast</h3>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                  <div>
+                    <p className="text-sm text-gray-600 mb-2">Current Market Regime</p>
+                    <RegimeBadge regime={forecast.current_regime} />
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600 mb-2">GSTI Score</p>
+                    <p className="text-3xl font-bold text-gray-900">{forecast.gsti_score?.toFixed(3)}</p>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="p-4 bg-blue-50 rounded-lg">
+                    <p className="text-sm font-medium text-blue-900 mb-2">Strategic Recommendation</p>
+                    <p className="text-blue-800">{forecast.recommendation}</p>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="p-4 bg-red-50 rounded-lg">
+                      <p className="text-sm font-medium text-red-900 mb-3">Risk Factors</p>
+                      <ul className="space-y-2">
+                        {forecast.risk_factors?.map((risk, i) => (
+                          <li key={i} className="flex items-start text-sm text-red-800">
+                            <AlertTriangle className="w-4 h-4 mr-2 mt-0.5 flex-shrink-0" />
+                            {risk}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+
+                    <div className="p-4 bg-green-50 rounded-lg">
+                      <p className="text-sm font-medium text-green-900 mb-2">Opportunity Assessment</p>
+                      <p className="text-green-800">{forecast.opportunity}</p>
+                      <div className="mt-3">
+                        <p className="text-xs text-green-700">Forecast Horizon</p>
+                        <p className="text-sm font-medium text-green-900">{forecast.forecast_horizon}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="p-4 bg-gray-50 rounded-lg">
+                    <p className="text-sm font-medium text-gray-900 mb-2">Gold-Silver Ratio</p>
+                    <p className="text-2xl font-bold text-gray-900">{forecast.gold_silver_ratio?.toFixed(2)}</p>
+                    <p className="text-xs text-gray-600 mt-1">Historical context indicator</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Talent Flow Analysis */}
+            {talentFlow && (
+              <div className="bg-white rounded-lg shadow p-6">
+                <h3 className="text-lg font-semibold text-gray-900 mb-6">Talent Flow Economic Signals</h3>
+                
+                {talentFlow.metrics && (
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                    <div className="p-4 bg-purple-50 rounded-lg text-center">
+                      <p className="text-sm text-gray-600 mb-1">Avg Tokens per Candidate</p>
+                      <p className="text-3xl font-bold text-purple-600">
+                        {talentFlow.metrics.average_tokens_per_candidate}
+                      </p>
+                    </div>
+                    <div className="p-4 bg-blue-50 rounded-lg text-center">
+                      <p className="text-sm text-gray-600 mb-1">Loyalty Concentration</p>
+                      <p className="text-3xl font-bold text-blue-600">
+                        {talentFlow.metrics.loyalty_concentration}
+                      </p>
+                    </div>
+                    <div className="p-4 bg-green-50 rounded-lg text-center">
+                      <p className="text-sm text-gray-600 mb-1">Skill Concentration</p>
+                      <p className="text-3xl font-bold text-green-600">
+                        {talentFlow.metrics.skill_concentration}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {talentFlow.signals && talentFlow.signals.length > 0 && (
+                  <div>
+                    <h4 className="font-medium text-gray-900 mb-3">Economic Signals Detected</h4>
+                    <div className="space-y-3">
+                      {talentFlow.signals.map((signal, idx) => (
+                        <div
+                          key={idx}
+                          className={`p-4 rounded-lg border-l-4 ${
+                            signal.severity === 'warning'
+                              ? 'bg-yellow-50 border-yellow-400'
+                              : signal.severity === 'positive'
+                              ? 'bg-green-50 border-green-400'
+                              : 'bg-blue-50 border-blue-400'
+                          }`}
+                        >
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1">
+                              <p className="font-medium text-gray-900 mb-1">{signal.signal}</p>
+                              <p className="text-sm text-gray-700">{signal.interpretation}</p>
+                            </div>
+                            <span
+                              className={`px-2 py-1 rounded text-xs font-medium ${
+                                signal.severity === 'warning'
+                                  ? 'bg-yellow-200 text-yellow-800'
+                                  : signal.severity === 'positive'
+                                  ? 'bg-green-200 text-green-800'
+                                  : 'bg-blue-200 text-blue-800'
+                              }`}
+                            >
+                              {signal.severity}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {talentFlow.economic_interpretation && (
+                  <div className="mt-6 p-4 bg-gray-50 rounded-lg">
+                    <p className="text-sm text-gray-700">{talentFlow.economic_interpretation}</p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* System Intelligence Summary */}
+            {systemStatus && (
+              <div className="bg-gradient-to-br from-purple-50 to-blue-50 rounded-lg shadow p-6 border border-purple-200">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">System Intelligence Overview</h3>
+                
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="bg-white rounded-lg p-4">
+                    <p className="text-sm font-medium text-gray-600 mb-2">GSTI Engine</p>
+                    <div className="space-y-1 text-sm">
+                      <p className="text-gray-900">
+                        Data Points: {systemStatus.components?.gsti_engine?.historical_data_points || 0}
+                      </p>
+                      <p className="text-gray-900">
+                        Goodwill Weight: {systemStatus.components?.gsti_engine?.current_weights?.w_goodwill || 0}
+                      </p>
+                      <p className="text-gray-900">
+                        GSR Weight: {systemStatus.components?.gsti_engine?.current_weights?.w_gsr || 0}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="bg-white rounded-lg p-4">
+                    <p className="text-sm font-medium text-gray-600 mb-2">AMP Engine</p>
+                    <div className="space-y-1 text-sm">
+                      <p className="text-gray-900">
+                        Candidates: {systemStatus.components?.amp_engine?.candidates_registered || 0}
+                      </p>
+                      <p className="text-gray-900">
+                        Status: {systemStatus.components?.amp_engine?.initialized ? 'Active' : 'Inactive'}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="bg-white rounded-lg p-4">
+                    <p className="text-sm font-medium text-gray-600 mb-2">Market Intelligence</p>
+                    <div className="space-y-1 text-sm">
+                      <p className="text-gray-900">
+                        GSTI Data: {systemStatus.components?.market_intelligence?.gsti_data_available ? 'Available' : 'N/A'}
+                      </p>
+                      <p className="text-gray-900">
+                        Current Regime: <RegimeBadge regime={systemStatus.components?.market_intelligence?.current_regime} />
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Footer */}
+      <div className="bg-white border-t border-gray-200 mt-12">
+        <div className="max-w-7xl mx-auto px-6 py-4">
+          <div className="flex items-center justify-between text-sm text-gray-600">
+            <p>AMP-GSTI Unified Intelligence Platform v1.0.0</p>
+            <p>Anonymous Merit Protocol + Gold-Silver Trust Index</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default AMP_GSTI_Dashboard;
