@@ -28,6 +28,7 @@ Traditional hiring relies on static resumes and subjective judgment. **AMP-GSTI*
 - 🎚️ **Regime-Adjusted Scoring** — Candidate scores adapt to market conditions (recession vs. growth)
 - 🔮 **Predictive Analytics** — Hiring forecasts and talent-flow economic signals
 - 🔐 **Full Authentication** — JWT-based security with role-based access control
+- Auth routes are integrated in v1.1.0 (or enable by including the auth router).
 - 💾 **Production Database** — PostgreSQL + SQLAlchemy ORM with migration support
 - 📡 **Comprehensive REST API** — Auto-generated interactive docs via FastAPI
 - 🤖 **Automated Data Population** — Live market feeds with realistic candidate generation
@@ -67,7 +68,7 @@ cp .env.example .env
 # Edit .env with your database credentials and API keys
 
 # Initialize database
-python -c "from database import Base, create_engine; from config import settings; \
+python -c "from app.database import Base; from sqlalchemy import create_engine; from app.config import settings; \
 engine = create_engine(settings.DATABASE_URL); Base.metadata.create_all(bind=engine)"
 
 # Run API server
@@ -274,7 +275,7 @@ Introduces zero-knowledge verification for hiring, eliminating demographic bias 
 ### 2. **Quantifying Market Trust: Goodwill & GSTI**
 Proposes the Gold-Silver Trust Index as a novel economic indicator that correlates precious metal ratios with corporate goodwill and talent market dynamics.
 
-📖 **Full Papers**: See `Zero-Knowledge.md` and `Goodwill_GSTI.md`
+📖 **Full Papers**: See docs/whitepapers/Zero_Knowledge.md and docs/whitepapers/Goodwill_GSTI.md
 
 ---
 
@@ -431,7 +432,7 @@ See `LICENSE` file for full terms. This means you can:
 ## 🌐 Community & Support
 
 ### Get Help
-- 📖 **Documentation**: Visit `/whitepapers` for interactive API documentation
+- 📖 **Documentation**: Visit `/docs` for interactive API documentation
 - 🐛 **Report Issues**
 - 💬 **Discussions**
 - 📧 **Email**: dfeen87@gmail.com
