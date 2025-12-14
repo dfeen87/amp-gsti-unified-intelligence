@@ -372,6 +372,14 @@ def root():
         }
     }
 
+@app.get("/health")
+def health_check():
+    """Simple health check endpoint"""
+    return {
+        "status": "healthy",
+        "timestamp": datetime.utcnow().isoformat()
+    }
+
 # ---------- MARKET INTELLIGENCE ----------
 
 @app.post("/market/gsti/update")
