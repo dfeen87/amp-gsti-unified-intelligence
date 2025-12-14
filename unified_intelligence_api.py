@@ -1,15 +1,52 @@
 """
 AMP-GSTI Unified Intelligence API
-==================================
-Production-grade API combining Anonymous Merit Protocol (AMP) 
-with Gold-Silver Trust Index (GSTI) for predictive talent markets.
+================================
 
-Architecture:
-- RESTful API design with FastAPI
-- Modular component separation
-- Real-time market regime integration
-- Cryptographic verification simulation
-- Dynamic candidate scoring based on macro conditions
+A production-grade intelligence API that unifies the Anonymous Merit Protocol (AMP)
+with the Gold-Silver Trust Index (GSTI) to model talent as a dynamic, market-responsive asset.
+
+This system reframes hiring intelligence through a macroeconomic lens:
+candidate merit is evaluated anonymously, cryptographically verified,
+and adaptively scored based on prevailing economic regimes.
+
+Rather than treating human capital as static, AMP-GSTI models talent valuation
+the way markets model commodities — responsive to volatility, confidence, and trust.
+
+-----------------------------------------------------------------------
+
+CORE PRINCIPLES
+• Merit without identity — credentials are verified without exposing demographics
+• Market awareness — talent valuation adapts to macroeconomic regimes
+• Predictive intelligence — hiring signals emerge before competitors react
+• Cryptographic trust — Soulbound-style credential modeling
+• Systemic clarity — explicit separation between simulation and production concerns
+
+-----------------------------------------------------------------------
+
+ARCHITECTURE OVERVIEW
+• FastAPI-based REST interface
+• Modular intelligence engines (GSTI + AMP)
+• Regime-aware scoring pipeline
+• Zero-knowledge verification simulation
+• Deterministic, explainable outputs
+• Demo-friendly, production-extensible design
+
+-----------------------------------------------------------------------
+
+IMPORTANT IMPLEMENTATION NOTES
+• This release intentionally uses in-memory state to enable rapid experimentation,
+  research validation, and clean onboarding.
+• Persistence layers (PostgreSQL / Redis) are designed to be introduced
+  without altering the intelligence logic.
+• Zero-knowledge verification is modeled as a cryptographic abstraction
+  for clarity and extensibility.
+
+This file serves as both:
+1) a runnable intelligence system
+2) a reference implementation of AMP-GSTI concepts
+
+Version: 1.0.0
+Status: Initial Public Release
 """
 
 from fastapi import FastAPI, HTTPException, Query
@@ -68,6 +105,7 @@ class GSTIMetrics(BaseModel):
 
 # ============================================================================
 # GSTI CALCULATOR ENGINE
+# Gold-Silver Trust Index — Macroeconomic Intelligence Layer
 # ============================================================================
 
 class GSTIEngine:
@@ -161,6 +199,7 @@ class GSTIEngine:
 
 # ============================================================================
 # AMP MATCHING ENGINE
+# Anonymous Merit Protocol — Regime-Aware Candidate Evaluation
 # ============================================================================
 
 class AMPMatchingEngine:
@@ -286,6 +325,7 @@ class AMPMatchingEngine:
 
 # ============================================================================
 # API APPLICATION
+# RESTful Interface Layer
 # ============================================================================
 
 app = FastAPI(
@@ -298,7 +338,19 @@ app = FastAPI(
 gsti_engine = GSTIEngine()
 amp_engine = AMPMatchingEngine(gsti_engine)
 
-# Mock database (replace with actual DB in production)
+# ---------------------------------------------------------------------------
+# STATE MANAGEMENT (SIMULATION LAYER)
+# ---------------------------------------------------------------------------
+# In-memory state is used intentionally in v1.0.0 to keep the system
+# transparent, testable, and easy to reason about.
+#
+# Production deployments should replace these structures with:
+# • PostgreSQL (long-term persistence)
+# • Redis (ephemeral / real-time state)
+# • Event streams (future intelligence extensions)
+#
+# The intelligence engines below are storage-agnostic by design.
+
 CANDIDATE_DB: List[Candidate] = []
 MARKET_STATE: Dict[str, Any] = {}
 
