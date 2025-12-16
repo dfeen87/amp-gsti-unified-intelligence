@@ -1,0 +1,65 @@
+[build-system]
+requires = ["setuptools>=65.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "amp-gsti-unified-intelligence"
+version = "1.1.0"
+description = "AMP-GSTI: A production-grade intelligence API for anonymous merit evaluation and macroeconomic trust signaling."
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+
+authors = [
+    { name = "Don Michael Feeney Jr" }
+]
+
+keywords = [
+    "fastapi",
+    "intelligence-api",
+    "talent-evaluation",
+    "macroeconomics",
+    "trust-signals",
+    "anonymous-merit"
+]
+
+dependencies = [
+    "fastapi>=0.110",
+    "uvicorn>=0.29",
+    "pydantic>=2.6",
+    "python-dotenv>=1.0"
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "httpx>=0.27",
+    "black>=24.0",
+    "ruff>=0.3",
+    "mypy>=1.8"
+]
+
+[project.urls]
+Homepage = "https://github.com/your-org/amp-gsti-unified-intelligence"
+Repository = "https://github.com/your-org/amp-gsti-unified-intelligence"
+Issues = "https://github.com/your-org/amp-gsti-unified-intelligence/issues"
+
+# ===============================
+# Tooling configuration (optional, safe defaults)
+# ===============================
+
+[tool.black]
+line-length = 88
+target-version = ["py310"]
+
+[tool.ruff]
+line-length = 88
+select = ["E", "F", "I"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = false
+warn_unused_ignores = true
+warn_redundant_casts = true
+disallow_untyped_defs = false
