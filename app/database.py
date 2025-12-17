@@ -45,7 +45,7 @@ class User(Base):
     is_active = Column(Boolean, nullable=False, server_default=text("true"))
 
     # Token revocation lever: bump to invalidate prior JWTs if you include it in JWT claims.
-    token_version = Column(Integer, nullable=False, server_default=text("0"))
+    token_version = Column(Integer, default=0, nullable=False, server_default=text("0"))
 
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
 
