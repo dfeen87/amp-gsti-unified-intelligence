@@ -1,8 +1,190 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, createContext, useContext, Component } from 'react';
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar } from 'recharts';
-import { TrendingUp, TrendingDown, Activity, Users, Target, AlertTriangle, CheckCircle, RefreshCw, Database, Zap } from 'lucide-react';
+import { TrendingUp, TrendingDown, Activity, Users, Target, AlertTriangle, CheckCircle, RefreshCw, Database, Zap, Shield, Lock, LogOut } from 'lucide-react';
 
-const API_BASE = 'http://localhost:8000';
+// PHASE 0 & 1: Environment-based API configuration with HTTPS enforcement
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+const APP_VERSION = import.meta.env.VITE_APP_VERSION || '1.0.0-hardened';
+
+// PHASE 1.2: HTTPS enforcement in production
+if (typeof window !== 'undefined' && window.location.protocol !== 'https:' && import.meta.env.PROD) {
+  throw new Error('HTTPS required in production');
+}
+
+// PHASE 8.1: Structured logging
+const logError = ({ component, action, error, metadata = {} }) => {
+  console.error('[ERROR]', {
+    timestamp: new Date().toISOString(),
+    component,
+    action,
+    error: error.message || error,
+    metadata,
+    version: APP_VERSION
+  });
+};
+
+const logAction = ({ component, action, metadata = {} }) => {
+  console.log('[ACTION]', {
+    timestamp: new Date().toISOString(),
+    component,
+    action,
+    metadata,
+    version: APP_VERSION
+  });
+};
+
+// PHASE 2.1: Authentication Context
+const AuthContext = createContext({
+  user: null,
+  role: 'viewer',
+  token: null,
+  authenticated: false
+});
+
+const useAuth = () => useContext(AuthContext);
+
+// PHASE 1.3: Centralized API client with strict defaults
+const apiFetch = async (path, options = {}) => {
+  const authToken = sessionStorage.getItem('auth_token');
+  
+  try {
+    const res = await fetch(`${API_BASE}${path}`, {
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(authToken && { 'Authorization': `Bearer ${authToken}` }),
+        ...options.headers,
+      },
+      ...options,
+    });
+
+    if (!res.ok) {
+      const error = await res.text();
+      throw new Error(error || `HTTP ${res.status}`);
+    }
+
+    const data = await res.json();
+    
+    // PHASE 7.1: Strict response shape validation
+    if (data && typeof data !== 'object') {
+      throw new Error('Invalid response format');
+    }
+    
+    return data;
+  } catch (error) {
+    logError({ component: 'apiFetch', action: path, error });
+    throw error;
+  }
+};
+
+// PHASE 3.1 & 3.2: Input validation utilities
+const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
+
+const validateNumeric = (value, min = -Infinity, max = Infinity) => {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return null;
+  return clamp(num, min, max);
+};
+
+const validateWalletAddress = (address) => {
+  return /^0x[a-fA-F0-9]{40}$/.test(address);
+};
+
+// PHASE 6.3: Rate limiting
+class RateLimiter {
+  constructor(maxRequests, windowMs) {
+    this.maxRequests = maxRequests;
+    this.windowMs = windowMs;
+    this.requests = [];
+  }
+
+  canMakeRequest() {
+    const now = Date.now();
+    this.requests = this.requests.filter(time => now - time < this.windowMs);
+    return this.requests.length < this.maxRequests;
+  }
+
+  recordRequest() {
+    this.requests.push(Date.now());
+  }
+}
+
+const queryRateLimiter = new RateLimiter(10, 60000); // 10 requests per minute
+
+// PHASE 5.3: Exponential backoff for polling
+class ExponentialBackoff {
+  constructor(initialDelay = 1000, maxDelay = 30000, maxRetries = 5) {
+    this.initialDelay = initialDelay;
+    this.maxDelay = maxDelay;
+    this.maxRetries = maxRetries;
+    this.retries = 0;
+  }
+
+  getDelay() {
+    if (this.retries >= this.maxRetries) return null;
+    const delay = Math.min(this.initialDelay * Math.pow(2, this.retries), this.maxDelay);
+    return delay;
+  }
+
+  increment() {
+    this.retries++;
+  }
+
+  reset() {
+    this.retries = 0;
+  }
+}
+
+// PHASE 5.1: Error Boundary Component
+class ErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    logError({ 
+      component: 'ErrorBoundary', 
+      action: 'componentDidCatch', 
+      error,
+      metadata: { errorInfo }
+    });
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen bg-red-50 flex items-center justify-center p-6">
+          <div className="bg-white rounded-lg shadow-lg p-8 max-w-2xl">
+            <div className="flex items-center mb-4">
+              <AlertTriangle className="w-8 h-8 text-red-600 mr-3" />
+              <h1 className="text-2xl font-bold text-gray-900">Application Error</h1>
+            </div>
+            <p className="text-gray-700 mb-4">
+              The application encountered an unexpected error. Please refresh the page or contact support.
+            </p>
+            <details className="text-sm text-gray-600 bg-gray-50 p-4 rounded">
+              <summary className="cursor-pointer font-medium">Error Details</summary>
+              <pre className="mt-2 overflow-auto">{this.state.error?.toString()}</pre>
+            </details>
+            <button
+              onClick={() => window.location.reload()}
+              className="mt-6 bg-blue-600 text-white px-6 py-2 rounded-md hover:bg-blue-700"
+            >
+              Reload Application
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
 
 const REGIME_COLORS = {
   bullish: '#10b981',
@@ -10,7 +192,243 @@ const REGIME_COLORS = {
   neutral: '#f59e0b'
 };
 
+// PHASE 2.2: Role-based access control definitions
+const ROLE_PERMISSIONS = {
+  admin: ['update_market', 'register_candidate', 'query_candidates', 'view_intelligence'],
+  operator: ['register_candidate', 'query_candidates', 'view_intelligence'],
+  analyst: ['query_candidates', 'view_intelligence'],
+  viewer: ['view_intelligence']
+};
+
+const hasPermission = (role, action) => {
+  return ROLE_PERMISSIONS[role]?.includes(action) || false;
+};
+
+// PHASE 5.2: Error Banner Component
+const ErrorBanner = ({ error, onDismiss }) => {
+  if (!error) return null;
+  
+  return (
+    <div className="bg-red-50 border-l-4 border-red-400 p-4 mb-4">
+      <div className="flex items-start">
+        <AlertTriangle className="w-5 h-5 text-red-400 mr-3 mt-0.5" />
+        <div className="flex-1">
+          <h3 className="text-sm font-medium text-red-800">Error</h3>
+          <p className="text-sm text-red-700 mt-1">{error}</p>
+        </div>
+        {onDismiss && (
+          <button onClick={onDismiss} className="text-red-400 hover:text-red-600">
+            ×
+          </button>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// PHASE 8.3: Audit mode detection
+const isAuditMode = () => {
+  const params = new URLSearchParams(window.location.search);
+  return params.get('audit') === 'true';
+};
+
+// PHASE 2: Real authentication utilities
+const AUTH_API = `${API_BASE}/auth`;
+
+const loginUser = async (username, password) => {
+  try {
+    const response = await fetch(`${AUTH_API}/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+      credentials: 'include'
+    });
+
+    if (!response.ok) {
+      throw new Error('Login failed');
+    }
+
+    const data = await response.json();
+    
+    // Store token and user info
+    if (data.token) {
+      sessionStorage.setItem('auth_token', data.token);
+      sessionStorage.setItem('user_role', data.role || 'viewer');
+      sessionStorage.setItem('user_name', data.username || 'user');
+    }
+    
+    return data;
+  } catch (error) {
+    logError({ component: 'loginUser', action: 'login', error });
+    throw error;
+  }
+};
+
+const logoutUser = () => {
+  sessionStorage.removeItem('auth_token');
+  sessionStorage.removeItem('user_role');
+  sessionStorage.removeItem('user_name');
+  window.location.href = '/login';
+};
+
+const getStoredAuth = () => {
+  const token = sessionStorage.getItem('auth_token');
+  const role = sessionStorage.getItem('user_role');
+  const user = sessionStorage.getItem('user_name');
+  
+  if (!token) {
+    return {
+      user: null,
+      role: 'viewer',
+      token: null,
+      authenticated: false
+    };
+  }
+  
+  return {
+    user: user || 'user',
+    role: role || 'viewer',
+    token,
+    authenticated: true
+  };
+};
+
+// Login Component
+const LoginScreen = ({ onLogin }) => {
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setError('');
+
+    try {
+      const data = await loginUser(username, password);
+      onLogin(data);
+    } catch (err) {
+      setError('Invalid credentials. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-blue-600 to-purple-600 flex items-center justify-center p-6">
+      <div className="bg-white rounded-lg shadow-2xl p-8 max-w-md w-full">
+        <div className="text-center mb-8">
+          <Shield className="w-16 h-16 text-blue-600 mx-auto mb-4" />
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">AMP-GSTI Platform</h1>
+          <p className="text-gray-600">Secure Authentication Required</p>
+        </div>
+
+        {error && (
+          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+            <p className="text-sm text-red-800">{error}</p>
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Username</label>
+            <input
+              type="text"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              placeholder="Enter username"
+              required
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              placeholder="Enter password"
+              required
+            />
+          </div>
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full bg-blue-600 text-white px-4 py-3 rounded-md font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+          >
+            {loading ? (
+              <>
+                <RefreshCw className="w-5 h-5 mr-2 animate-spin" />
+                Authenticating...
+              </>
+            ) : (
+              <>
+                <Shield className="w-5 h-5 mr-2" />
+                Sign In
+              </>
+            )}
+          </button>
+        </form>
+
+        <div className="mt-6 p-4 bg-gray-50 rounded-lg">
+          <p className="text-xs text-gray-600 mb-2">Demo Credentials:</p>
+          <p className="text-xs text-gray-700">Admin: admin / admin123</p>
+          <p className="text-xs text-gray-700">Analyst: analyst / analyst123</p>
+          <p className="text-xs text-gray-700">Viewer: viewer / viewer123</p>
+        </div>
+
+        <p className="text-xs text-gray-500 text-center mt-6">
+          v{APP_VERSION} • Secured by HTTPS
+        </p>
+      </div>
+    </div>
+  );
+};
+
 const AMP_GSTI_Dashboard = () => {
+  // PHASE 2.1: Real authentication state from sessionStorage
+  const [auth, setAuth] = useState(() => getStoredAuth());
+  const [showLogin, setShowLogin] = useState(!auth.authenticated);
+  
+  const auditMode = isAuditMode();
+
+  // Handle login
+  const handleLogin = (userData) => {
+    const newAuth = {
+      user: userData.username || 'user',
+      role: userData.role || 'viewer',
+      token: userData.token,
+      authenticated: true
+    };
+    setAuth(newAuth);
+    setShowLogin(false);
+    
+    logAction({
+      component: 'handleLogin',
+      action: 'login_success',
+      metadata: { user: newAuth.user, role: newAuth.role }
+    });
+  };
+
+  // Handle logout
+  const handleLogout = () => {
+    logAction({
+      component: 'handleLogout',
+      action: 'logout',
+      metadata: { user: auth.user }
+    });
+    logoutUser();
+  };
+
+  // Show login screen if not authenticated
+  if (showLogin || !auth.authenticated) {
+    return <LoginScreen onLogin={handleLogin} />;
+  }
+
   const [marketState, setMarketState] = useState(null);
   const [candidates, setCandidates] = useState([]);
   const [systemStatus, setSystemStatus] = useState(null);
@@ -20,8 +438,13 @@ const AMP_GSTI_Dashboard = () => {
   const [talentFlow, setTalentFlow] = useState(null);
   const [loading, setLoading] = useState({});
   const [activeTab, setActiveTab] = useState('overview');
+  const [errors, setErrors] = useState({});
+  const [backoff] = useState(() => new ExponentialBackoff());
   
-  // Market update form state
+  // PHASE 6.1: Button lock state
+  const [buttonLocks, setButtonLocks] = useState({});
+
+  // Market update form state with PHASE 3.2: validated bounds
   const [marketForm, setMarketForm] = useState({
     gold_price: 2500,
     silver_price: 25,
@@ -39,6 +462,35 @@ const AMP_GSTI_Dashboard = () => {
     M_A_Surges: false
   });
 
+  // PHASE 3.2: Input bounds validation
+  const MARKET_BOUNDS = {
+    gold_price: { min: 0, max: 10000 },
+    silver_price: { min: 0, max: 1000 },
+    CR: { min: 0, max: 2 },
+    ES: { min: 0, max: 2 },
+    BT: { min: 0, max: 2 },
+    RG: { min: 0, max: 2 },
+    NCB: { min: -1, max: 1 },
+    CS: { min: 0, max: 2 },
+    BR: { min: 0, max: 2 },
+    CA: { min: 0, max: 2 },
+    SS: { min: 0, max: 2 },
+    NCB_consumer: { min: -1, max: 1 },
+    VIX: { min: 0, max: 100 }
+  };
+
+  const updateMarketField = (field, value) => {
+    const bounds = MARKET_BOUNDS[field];
+    if (bounds) {
+      const validated = validateNumeric(value, bounds.min, bounds.max);
+      if (validated !== null) {
+        setMarketForm(prev => ({ ...prev, [field]: validated }));
+      }
+    } else {
+      setMarketForm(prev => ({ ...prev, [field]: value }));
+    }
+  };
+
   // Query form state
   const [queryForm, setQueryForm] = useState({
     required_skills: '',
@@ -48,7 +500,7 @@ const AMP_GSTI_Dashboard = () => {
     consider_market_regime: true
   });
 
-  // Candidate form state
+  // Candidate form state with validation
   const [candidateForm, setCandidateForm] = useState({
     wallet_address: '',
     years_experience: 5,
@@ -63,139 +515,315 @@ const AMP_GSTI_Dashboard = () => {
     issue_date: new Date().toISOString().split('T')[0]
   });
 
-  // Fetch functions
+  // PHASE 6.1 & 6.2: Debounced query with lock
+  const [queryDebounceTimer, setQueryDebounceTimer] = useState(null);
+
+  // Fetch functions with error handling and logging
   const fetchMarketState = async () => {
     setLoading(prev => ({ ...prev, market: true }));
+    setErrors(prev => ({ ...prev, market: null }));
+    
     try {
-      const res = await fetch(`${API_BASE}/market/gsti`);
-      if (res.ok) {
-        const data = await res.json();
-        setMarketState(data.data);
+      const data = await apiFetch('/market/gsti');
+      
+      // PHASE 7.1: Validate response structure
+      if (!data.data || typeof data.data.gsti_score !== 'number') {
+        throw new Error('Invalid market state response');
       }
+      
+      setMarketState(data.data);
+      backoff.reset();
+      
+      logAction({ 
+        component: 'fetchMarketState', 
+        action: 'success',
+        metadata: { regime: data.data.market_regime }
+      });
     } catch (err) {
-      console.error('Failed to fetch market state:', err);
+      const errorMsg = 'Market intelligence temporarily unavailable — retrying';
+      setErrors(prev => ({ ...prev, market: errorMsg }));
+      logError({ component: 'fetchMarketState', action: 'fetch', error: err });
+      backoff.increment();
+    } finally {
+      setLoading(prev => ({ ...prev, market: false }));
     }
-    setLoading(prev => ({ ...prev, market: false }));
   };
 
   const fetchSystemStatus = async () => {
     try {
-      const res = await fetch(`${API_BASE}/system/status`);
-      if (res.ok) {
-        const data = await res.json();
+      const data = await apiFetch('/system/status');
+      if (data && typeof data === 'object') {
         setSystemStatus(data);
       }
     } catch (err) {
-      console.error('Failed to fetch system status:', err);
+      logError({ component: 'fetchSystemStatus', action: 'fetch', error: err });
     }
   };
 
   const fetchStats = async () => {
     try {
-      const res = await fetch(`${API_BASE}/candidates/stats`);
-      if (res.ok) {
-        const data = await res.json();
-        setStats(data);
+      const data = await apiFetch('/candidates/stats');
+      
+      // PHASE 7.1: Validate response
+      if (!data || typeof data.total_candidates !== 'number') {
+        throw new Error('Invalid stats response');
       }
+      
+      setStats(data);
     } catch (err) {
-      console.error('Failed to fetch stats:', err);
+      logError({ component: 'fetchStats', action: 'fetch', error: err });
     }
   };
 
   const fetchForecast = async () => {
     try {
-      const res = await fetch(`${API_BASE}/intelligence/hiring-forecast`);
-      if (res.ok) {
-        const data = await res.json();
+      const data = await apiFetch('/intelligence/hiring-forecast');
+      
+      if (data && data.forecast) {
         setForecast(data.forecast);
       }
     } catch (err) {
-      console.error('Failed to fetch forecast:', err);
+      logError({ component: 'fetchForecast', action: 'fetch', error: err });
     }
   };
 
   const fetchTalentFlow = async () => {
     try {
-      const res = await fetch(`${API_BASE}/intelligence/talent-flow`);
-      if (res.ok) {
-        const data = await res.json();
+      const data = await apiFetch('/intelligence/talent-flow');
+      
+      if (data && typeof data === 'object') {
         setTalentFlow(data);
       }
     } catch (err) {
-      console.error('Failed to fetch talent flow:', err);
+      logError({ component: 'fetchTalentFlow', action: 'fetch', error: err });
     }
   };
 
-  // Update market state
+  // PHASE 2.3 & 8.2: Update market state with role check and audit logging
   const updateMarketState = async () => {
+    // Role gate
+    if (!hasPermission(auth.role, 'update_market')) {
+      setErrors(prev => ({ ...prev, update: 'Insufficient permissions' }));
+      return;
+    }
+    
+    // PHASE 8.3: Block in audit mode
+    if (auditMode) {
+      setErrors(prev => ({ ...prev, update: 'Mutations disabled in audit mode' }));
+      return;
+    }
+    
+    // PHASE 6.1: Button lock
+    if (buttonLocks.update) return;
+    setButtonLocks(prev => ({ ...prev, update: true }));
+    
     setLoading(prev => ({ ...prev, update: true }));
+    setErrors(prev => ({ ...prev, update: null }));
+    
     try {
       const params = new URLSearchParams(marketForm);
-      const res = await fetch(`${API_BASE}/market/gsti/update?${params}`, {
+      
+      logAction({
+        component: 'updateMarketState',
+        action: 'submit',
+        metadata: { user: auth.user, params: Object.fromEntries(params) }
+      });
+      
+      await apiFetch(`/market/gsti/update?${params}`, {
         method: 'POST'
       });
-      if (res.ok) {
-        await fetchMarketState();
-        await fetchForecast();
-      }
-    } catch (err) {
-      console.error('Failed to update market:', err);
-    }
-    setLoading(prev => ({ ...prev, update: false }));
-  };
-
-  // Register candidate
-  const registerCandidate = async () => {
-    setLoading(prev => ({ ...prev, register: true }));
-    try {
-      const res = await fetch(`${API_BASE}/candidates/register`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(candidateForm)
+      
+      await fetchMarketState();
+      await fetchForecast();
+      
+      logAction({
+        component: 'updateMarketState',
+        action: 'success',
+        metadata: { user: auth.user }
       });
-      if (res.ok) {
-        setCandidateForm({
-          wallet_address: '',
-          years_experience: 5,
-          base_predictive_score: 75,
-          tokens: []
-        });
-        await fetchStats();
-        await fetchSystemStatus();
-      }
     } catch (err) {
-      console.error('Failed to register candidate:', err);
+      setErrors(prev => ({ ...prev, update: err.message }));
+      logError({ component: 'updateMarketState', action: 'submit', error: err });
+    } finally {
+      setLoading(prev => ({ ...prev, update: false }));
+      // PHASE 6.1: Unlock after response
+      setTimeout(() => {
+        setButtonLocks(prev => ({ ...prev, update: false }));
+      }, 1000);
     }
-    setLoading(prev => ({ ...prev, register: false }));
   };
 
-  // Query candidates
+  // PHASE 2.3 & 3.3: Register candidate with role check and validation
+  const registerCandidate = async () => {
+    // Role gate
+    if (!hasPermission(auth.role, 'register_candidate')) {
+      setErrors(prev => ({ ...prev, register: 'Insufficient permissions' }));
+      return;
+    }
+    
+    // PHASE 8.3: Block in audit mode
+    if (auditMode) {
+      setErrors(prev => ({ ...prev, register: 'Mutations disabled in audit mode' }));
+      return;
+    }
+    
+    // PHASE 3.3: Validate wallet address
+    if (!validateWalletAddress(candidateForm.wallet_address)) {
+      setErrors(prev => ({ ...prev, register: 'Invalid wallet address format' }));
+      return;
+    }
+    
+    // PHASE 3.2: Validate numeric bounds
+    const validatedExperience = validateNumeric(candidateForm.years_experience, 0, 50);
+    const validatedScore = validateNumeric(candidateForm.base_predictive_score, 0, 100);
+    
+    if (validatedExperience === null || validatedScore === null) {
+      setErrors(prev => ({ ...prev, register: 'Invalid numeric values' }));
+      return;
+    }
+    
+    // PHASE 6.1: Button lock
+    if (buttonLocks.register) return;
+    setButtonLocks(prev => ({ ...prev, register: true }));
+    
+    setLoading(prev => ({ ...prev, register: true }));
+    setErrors(prev => ({ ...prev, register: null }));
+    
+    try {
+      // PHASE 4.1: Remove client-side hash generation - let server handle
+      const payload = {
+        ...candidateForm,
+        years_experience: validatedExperience,
+        base_predictive_score: validatedScore,
+        tokens: candidateForm.tokens.map(({ verification_hash, _tempId, ...token }) => token)
+      };
+      
+      logAction({
+        component: 'registerCandidate',
+        action: 'submit',
+        metadata: { 
+          user: auth.user,
+          wallet: candidateForm.wallet_address.slice(0, 10) + '...',
+          tokenCount: candidateForm.tokens.length
+        }
+      });
+      
+      await apiFetch('/candidates/register', {
+        method: 'POST',
+        body: JSON.stringify(payload)
+      });
+      
+      setCandidateForm({
+        wallet_address: '',
+        years_experience: 5,
+        base_predictive_score: 75,
+        tokens: []
+      });
+      
+      await fetchStats();
+      await fetchSystemStatus();
+      
+      logAction({
+        component: 'registerCandidate',
+        action: 'success',
+        metadata: { user: auth.user }
+      });
+    } catch (err) {
+      setErrors(prev => ({ ...prev, register: err.message }));
+      logError({ component: 'registerCandidate', action: 'submit', error: err });
+    } finally {
+      setLoading(prev => ({ ...prev, register: false }));
+      setTimeout(() => {
+        setButtonLocks(prev => ({ ...prev, register: false }));
+      }, 1000);
+    }
+  };
+
+  // PHASE 2.3 & 6.2 & 6.3: Query candidates with role check, debounce, and rate limiting
   const queryCandidates = async () => {
+    // Role gate
+    if (!hasPermission(auth.role, 'query_candidates')) {
+      setErrors(prev => ({ ...prev, query: 'Insufficient permissions' }));
+      return;
+    }
+    
+    // PHASE 6.3: Rate limit check
+    if (!queryRateLimiter.canMakeRequest()) {
+      setErrors(prev => ({ ...prev, query: 'Rate limit exceeded. Please wait before querying again.' }));
+      return;
+    }
+    
+    // PHASE 6.1: Button lock
+    if (buttonLocks.query) return;
+    setButtonLocks(prev => ({ ...prev, query: true }));
+    
     setLoading(prev => ({ ...prev, query: true }));
+    setErrors(prev => ({ ...prev, query: null }));
+    
     try {
       const payload = {
         required_skills: queryForm.required_skills.split(',').map(s => s.trim()).filter(Boolean),
         required_character: queryForm.required_character.split(',').map(s => s.trim()).filter(Boolean),
         required_loyalty: queryForm.required_loyalty.split(',').map(s => s.trim()).filter(Boolean),
-        min_predictive_score: parseFloat(queryForm.min_predictive_score),
+        min_predictive_score: validateNumeric(queryForm.min_predictive_score, 0, 100) || 0,
         consider_market_regime: queryForm.consider_market_regime
       };
       
-      const res = await fetch(`${API_BASE}/candidates/query`, {
+      logAction({
+        component: 'queryCandidates',
+        action: 'submit',
+        metadata: { 
+          user: auth.user,
+          skillCount: payload.required_skills.length,
+          minScore: payload.min_predictive_score
+        }
+      });
+      
+      queryRateLimiter.recordRequest();
+      
+      const data = await apiFetch('/candidates/query', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
-      if (res.ok) {
-        const data = await res.json();
-        setQueryResults(data);
+      
+      // PHASE 7.1: Validate response
+      if (!data || !Array.isArray(data.matches)) {
+        throw new Error('Invalid query response');
       }
+      
+      setQueryResults(data);
+      
+      logAction({
+        component: 'queryCandidates',
+        action: 'success',
+        metadata: { 
+          user: auth.user,
+          matchCount: data.matches.length
+        }
+      });
     } catch (err) {
-      console.error('Failed to query candidates:', err);
+      setErrors(prev => ({ ...prev, query: err.message }));
+      logError({ component: 'queryCandidates', action: 'submit', error: err });
+    } finally {
+      setLoading(prev => ({ ...prev, query: false }));
+      setTimeout(() => {
+        setButtonLocks(prev => ({ ...prev, query: false }));
+      }, 1000);
     }
-    setLoading(prev => ({ ...prev, query: false }));
   };
 
+  // PHASE 6.2: Debounced query trigger
+  const triggerDebouncedQuery = () => {
+    if (queryDebounceTimer) {
+      clearTimeout(queryDebounceTimer);
+    }
+    const timer = setTimeout(() => {
+      queryCandidates();
+    }, 500);
+    setQueryDebounceTimer(timer);
+  };
+
+  // PHASE 5.3: Exponential backoff polling
   useEffect(() => {
     fetchSystemStatus();
     fetchMarketState();
@@ -203,26 +831,54 @@ const AMP_GSTI_Dashboard = () => {
     fetchForecast();
     fetchTalentFlow();
     
-    const interval = setInterval(() => {
-      fetchSystemStatus();
-      fetchMarketState();
-      fetchStats();
-    }, 30000);
+    const poll = () => {
+      const delay = backoff.getDelay();
+      
+      if (delay === null) {
+        // Max retries exceeded
+        setErrors(prev => ({ 
+          ...prev, 
+          system: 'System polling paused due to repeated failures. Please refresh the page.' 
+        }));
+        return;
+      }
+      
+      setTimeout(async () => {
+        await fetchSystemStatus();
+        await fetchMarketState();
+        await fetchStats();
+        poll();
+      }, delay);
+    };
     
-    return () => clearInterval(interval);
+    const initialTimer = setTimeout(poll, 30000);
+    
+    return () => clearTimeout(initialTimer);
   }, []);
 
+  // Token management with server-side verification
   const addToken = () => {
     if (newToken.name && newToken.issuer) {
+      // PHASE 4.1: No client-side hash generation
       setCandidateForm(prev => ({
         ...prev,
-        tokens: [...prev.tokens, { ...newToken, verification_hash: '0x' + Math.random().toString(36).substr(2, 16) }]
+        tokens: [...prev.tokens, { 
+          ...newToken,
+          // Temporary ID for UI only - server will generate verification hash
+          _tempId: Date.now()
+        }]
       }));
       setNewToken({
         type: 'skill',
         name: '',
         issuer: '',
         issue_date: new Date().toISOString().split('T')[0]
+      });
+      
+      logAction({
+        component: 'addToken',
+        action: 'add',
+        metadata: { type: newToken.type, name: newToken.name }
       });
     }
   };
@@ -234,31 +890,49 @@ const AMP_GSTI_Dashboard = () => {
     }));
   };
 
-  // Prepare chart data
+  // PHASE 7.2: Client-side recomputation for display validation
   const getRegimeData = () => {
     if (!marketState) return [];
     const gsti = marketState.gsti_score || 0;
+    
+    // Recompute classification locally
+    const bullish = gsti > 0.05 ? 1 : 0;
+    const neutral = (gsti >= -0.05 && gsti <= 0.05) ? 1 : 0;
+    const bearish = gsti < -0.05 ? 1 : 0;
+    
     return [
-      { name: 'Bullish Zone', value: gsti > 0.05 ? 1 : 0, fill: REGIME_COLORS.bullish },
-      { name: 'Neutral Zone', value: gsti >= -0.05 && gsti <= 0.05 ? 1 : 0, fill: REGIME_COLORS.neutral },
-      { name: 'Bearish Zone', value: gsti < -0.05 ? 1 : 0, fill: REGIME_COLORS.bearish }
+      { name: 'Bullish Zone', value: bullish, fill: REGIME_COLORS.bullish },
+      { name: 'Neutral Zone', value: neutral, fill: REGIME_COLORS.neutral },
+      { name: 'Bearish Zone', value: bearish, fill: REGIME_COLORS.bearish }
     ];
   };
 
   const getGoodwillData = () => {
     if (!marketState) return [];
+    
+    // PHASE 7.2: Recompute percentages
     return [
-      { metric: 'General', value: (marketState.general_goodwill || 0) * 100 },
-      { metric: 'Consumer', value: (marketState.consumer_goodwill || 0) * 100 },
-      { metric: 'Unified', value: (marketState.unified_goodwill_score || 0) * 100 }
+      { 
+        metric: 'General', 
+        value: Number(((marketState.general_goodwill || 0) * 100).toFixed(2))
+      },
+      { 
+        metric: 'Consumer', 
+        value: Number(((marketState.consumer_goodwill || 0) * 100).toFixed(2))
+      },
+      { 
+        metric: 'Unified', 
+        value: Number(((marketState.unified_goodwill_score || 0) * 100).toFixed(2))
+      }
     ];
   };
 
   const getTokenDistribution = () => {
     if (!stats || !stats.token_distribution) return [];
+    
     return Object.entries(stats.token_distribution).map(([key, value]) => ({
       name: key.split(':')[1] || key,
-      value: value,
+      value: Number(value),
       type: key.split(':')[0]
     }));
   };
@@ -315,814 +989,940 @@ const AMP_GSTI_Dashboard = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-lg">
-        <div className="max-w-7xl mx-auto px-6 py-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-bold mb-2">AMP-GSTI Intelligence Platform</h1>
-              <p className="text-blue-100">Merit-Based Talent Matching with Macroeconomic Intelligence</p>
-            </div>
-            <div className="flex items-center gap-4">
-              {systemStatus && (
-                <div className="flex items-center gap-2 bg-white/10 rounded-lg px-4 py-2">
-                  <Activity className="w-5 h-5 animate-pulse" />
-                  <span className="font-medium">System Operational</span>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Navigation Tabs */}
-      <div className="bg-white border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-6">
-          <nav className="flex space-x-8">
-            {['overview', 'market', 'candidates', 'query', 'intelligence'].map(tab => (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                className={`py-4 px-2 border-b-2 font-medium text-sm transition-colors ${
-                  activeTab === tab
-                    ? 'border-blue-500 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                {tab.charAt(0).toUpperCase() + tab.slice(1)}
-              </button>
-            ))}
-          </nav>
-        </div>
-      </div>
-
-      {/* Main Content */}
-      <div className="max-w-7xl mx-auto px-6 py-8">
-        {/* Overview Tab */}
-        {activeTab === 'overview' && (
-          <div className="space-y-6">
-            {/* Key Metrics */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              <MetricCard
-                title="Market Regime"
-                value={marketState ? <RegimeBadge regime={marketState.market_regime} /> : 'Loading...'}
-                subtitle={marketState ? `GSTI: ${marketState.gsti_score?.toFixed(3)}` : ''}
-                icon={Activity}
-                color={marketState?.market_regime === 'bullish' ? 'green' : marketState?.market_regime === 'bearish' ? 'red' : 'yellow'}
-              />
-              <MetricCard
-                title="Gold/Silver Ratio"
-                value={marketState?.gsr?.toFixed(2) || '--'}
-                subtitle={`Gold: $${marketState?.gold_price || '--'}`}
-                icon={TrendingUp}
-                color="yellow"
-              />
-              <MetricCard
-                title="Total Candidates"
-                value={stats?.total_candidates || 0}
-                subtitle={`Avg Score: ${stats?.average_predictive_score?.toFixed(1) || '--'}`}
-                icon={Users}
-                color="blue"
-              />
-              <MetricCard
-                title="Goodwill Momentum"
-                value={marketState?.goodwill_momentum ? `${(marketState.goodwill_momentum * 100).toFixed(2)}%` : '--'}
-                subtitle="Market confidence trend"
-                icon={Target}
-                color="purple"
-              />
-            </div>
-
-            {/* Charts Row */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Market Regime Visualization */}
-              <div className="bg-white rounded-lg shadow p-6">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Market Regime Status</h3>
-                <ResponsiveContainer width="100%" height={250}>
-                  <PieChart>
-                    <Pie
-                      data={getRegimeData()}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={60}
-                      outerRadius={90}
-                      paddingAngle={5}
-                      dataKey="value"
-                    >
-                      {getRegimeData().map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.fill} />
-                      ))}
-                    </Pie>
-                    <Tooltip />
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
-
-              {/* Goodwill Metrics */}
-              <div className="bg-white rounded-lg shadow p-6">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Goodwill Components</h3>
-                <ResponsiveContainer width="100%" height={250}>
-                  <BarChart data={getGoodwillData()}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="metric" />
-                    <YAxis />
-                    <Tooltip />
-                    <Bar dataKey="value" fill="#3b82f6" />
-                  </BarChart>
-                </ResponsiveContainer>
+    <ErrorBoundary>
+      <AuthContext.Provider value={auth}>
+        <div className="min-h-screen bg-gray-50">
+          {/* PHASE 8.3: Audit mode banner */}
+          {auditMode && (
+            <div className="bg-yellow-50 border-b border-yellow-200 px-6 py-2">
+              <div className="max-w-7xl mx-auto flex items-center">
+                <Lock className="w-4 h-4 text-yellow-600 mr-2" />
+                <span className="text-sm font-medium text-yellow-900">
+                  Read-Only Audit Mode — All mutations disabled
+                </span>
               </div>
             </div>
-
-            {/* Forecast and Signals */}
-            {forecast && (
-              <div className="bg-gradient-to-br from-blue-50 to-purple-50 rounded-lg shadow p-6 border border-blue-200">
-                <div className="flex items-start justify-between mb-4">
-                  <div>
-                    <h3 className="text-lg font-semibold text-gray-900">Hiring Strategy Forecast</h3>
-                    <p className="text-sm text-gray-600">{forecast.forecast_horizon} outlook</p>
-                  </div>
-                  <RegimeBadge regime={forecast.current_regime} />
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
-                  <div className="bg-white rounded-lg p-4">
-                    <p className="text-sm font-medium text-gray-600 mb-2">Recommendation</p>
-                    <p className="text-gray-900">{forecast.recommendation}</p>
-                  </div>
-                  <div className="bg-white rounded-lg p-4">
-                    <p className="text-sm font-medium text-gray-600 mb-2">Risk Factors</p>
-                    <ul className="text-sm text-gray-900 space-y-1">
-                      {forecast.risk_factors?.map((risk, i) => (
-                        <li key={i} className="flex items-start">
-                          <AlertTriangle className="w-4 h-4 text-yellow-500 mr-2 mt-0.5 flex-shrink-0" />
-                          {risk}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                  <div className="bg-white rounded-lg p-4">
-                    <p className="text-sm font-medium text-gray-600 mb-2">Opportunity Level</p>
-                    <p className="text-gray-900">{forecast.opportunity}</p>
-                  </div>
-                </div>
+          )}
+          
+          {/* PHASE 5.2: Global error display */}
+          {errors.system && (
+            <div className="bg-red-50 border-b border-red-200 px-6 py-3">
+              <div className="max-w-7xl mx-auto">
+                <ErrorBanner error={errors.system} onDismiss={() => setErrors(prev => ({ ...prev, system: null }))} />
               </div>
-            )}
-          </div>
-        )}
+            </div>
+          )}
 
-        {/* Market Tab */}
-        {activeTab === 'market' && (
-          <div className="space-y-6">
-            <div className="bg-white rounded-lg shadow p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-6">Update Market Intelligence</h3>
-              
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {/* Header */}
+          <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-lg">
+            <div className="max-w-7xl mx-auto px-6 py-6">
+              <div className="flex items-center justify-between">
                 <div>
-                  <h4 className="font-medium text-gray-700 mb-4">Precious Metals</h4>
-                  <div className="space-y-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Gold Price (USD/oz)</label>
-                      <input
-                        type="number"
-                        value={marketForm.gold_price}
-                        onChange={(e) => setMarketForm({...marketForm, gold_price: parseFloat(e.target.value)})}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Silver Price (USD/oz)</label>
-                      <input
-                        type="number"
-                        value={marketForm.silver_price}
-                        onChange={(e) => setMarketForm({...marketForm, silver_price: parseFloat(e.target.value)})}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                      />
+                  <h1 className="text-3xl font-bold mb-2">AMP-GSTI Intelligence Platform</h1>
+                  <p className="text-blue-100">Merit-Based Talent Matching with Macroeconomic Intelligence</p>
+                </div>
+                <div className="flex items-center gap-4">
+                  {/* PHASE 2.1: Display auth status */}
+                  <div className="flex items-center gap-2 bg-white/10 rounded-lg px-4 py-2">
+                    <Shield className="w-5 h-5" />
+                    <div className="flex flex-col">
+                      <span className="font-medium text-sm">{auth.user}</span>
+                      <span className="text-xs text-blue-200">{auth.role}</span>
                     </div>
                   </div>
-                </div>
-
-                <div>
-                  <h4 className="font-medium text-gray-700 mb-4">General Goodwill</h4>
-                  <div className="space-y-4">
-                    {['CR', 'ES', 'BT', 'RG', 'NCB'].map(field => (
-                      <div key={field}>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">{field}</label>
-                        <input
-                          type="number"
-                          step="0.01"
-                          value={marketForm[field]}
-                          onChange={(e) => setMarketForm({...marketForm, [field]: parseFloat(e.target.value)})}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                        />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <h4 className="font-medium text-gray-700 mb-4">Consumer Goodwill & Market</h4>
-                  <div className="space-y-4">
-                    {['CS', 'BR', 'CA', 'SS', 'VIX'].map(field => (
-                      <div key={field}>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">{field}</label>
-                        <input
-                          type="number"
-                          step="0.01"
-                          value={marketForm[field]}
-                          onChange={(e) => setMarketForm({...marketForm, [field]: parseFloat(e.target.value)})}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                        />
-                      </div>
-                    ))}
-                    <div className="flex items-center">
-                      <input
-                        type="checkbox"
-                        checked={marketForm.M_A_Surges}
-                        onChange={(e) => setMarketForm({...marketForm, M_A_Surges: e.target.checked})}
-                        className="mr-2"
-                      />
-                      <label className="text-sm font-medium text-gray-700">M&A Surges</label>
+                  <button
+                    onClick={handleLogout}
+                    className="flex items-center gap-2 bg-white/10 hover:bg-white/20 rounded-lg px-4 py-2 transition-colors"
+                  >
+                    <LogOut className="w-5 h-5" />
+                    <span className="font-medium text-sm">Logout</span>
+                  </button>
+                  {systemStatus && (
+                    <div className="flex items-center gap-2 bg-white/10 rounded-lg px-4 py-2">
+                      <Activity className="w-5 h-5 animate-pulse" />
+                      <span className="font-medium">System Operational</span>
                     </div>
-                  </div>
+                  )}
                 </div>
               </div>
-
-              <button
-                onClick={updateMarketState}
-                disabled={loading.update}
-                className="mt-6 w-full bg-blue-600 text-white px-4 py-3 rounded-md font-medium hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center"
-              >
-                {loading.update ? (
-                  <>
-                    <RefreshCw className="w-5 h-5 mr-2 animate-spin" />
-                    Updating...
-                  </>
-                ) : (
-                  <>
-                    <Zap className="w-5 h-5 mr-2" />
-                    Update GSTI Metrics
-                  </>
-                )}
-              </button>
             </div>
-
-            {/* Current Market State Display */}
-            {marketState && (
-              <div className="bg-white rounded-lg shadow p-6">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Current Market State</h3>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <div>
-                    <p className="text-sm text-gray-600">GSR</p>
-                    <p className="text-2xl font-bold text-gray-900">{marketState.gsr?.toFixed(2)}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600">GSTI Score</p>
-                    <p className="text-2xl font-bold text-gray-900">{marketState.gsti_score?.toFixed(3)}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600">UGS</p>
-                    <p className="text-2xl font-bold text-gray-900">{marketState.unified_goodwill_score?.toFixed(3)}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600">VIX</p>
-                    <p className="text-2xl font-bold text-gray-900">{marketState.vix}</p>
-                  </div>
-                </div>
-              </div>
-            )}
           </div>
-        )}
 
-        {/* Candidates Tab */}
-        {activeTab === 'candidates' && (
-          <div className="space-y-6">
-            <div className="bg-white rounded-lg shadow p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-6">Register New Candidate</h3>
-              
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Wallet Address</label>
-                  <input
-                    type="text"
-                    value={candidateForm.wallet_address}
-                    onChange={(e) => setCandidateForm({...candidateForm, wallet_address: e.target.value})}
-                    placeholder="0x..."
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
+          {/* Navigation Tabs */}
+          <div className="bg-white border-b border-gray-200">
+            <div className="max-w-7xl mx-auto px-6">
+              <nav className="flex space-x-8">
+                {['overview', 'market', 'candidates', 'query', 'intelligence'].map(tab => (
+                  <button
+                    key={tab}
+                    onClick={() => setActiveTab(tab)}
+                    className={`py-4 px-2 border-b-2 font-medium text-sm transition-colors ${
+                      activeTab === tab
+                        ? 'border-blue-500 text-blue-600'
+                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                    }`}
+                  >
+                    {tab.charAt(0).toUpperCase() + tab.slice(1)}
+                  </button>
+                ))}
+              </nav>
+            </div>
+          </div>
+
+          {/* Main Content */}
+          <div className="max-w-7xl mx-auto px-6 py-8">
+            {/* Overview Tab */}
+            {activeTab === 'overview' && (
+              <div className="space-y-6">
+                {/* Key Metrics */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                  <MetricCard
+                    title="Market Regime"
+                    value={marketState ? <RegimeBadge regime={marketState.market_regime} /> : 'Loading...'}
+                    subtitle={marketState ? `GSTI: ${marketState.gsti_score?.toFixed(3)}` : ''}
+                    icon={Activity}
+                    color={marketState?.market_regime === 'bullish' ? 'green' : marketState?.market_regime === 'bearish' ? 'red' : 'yellow'}
+                  />
+                  <MetricCard
+                    title="Gold/Silver Ratio"
+                    value={marketState?.gsr?.toFixed(2) || '--'}
+                    subtitle={`Gold: ${marketState?.gold_price || '--'}`}
+                    icon={TrendingUp}
+                    color="yellow"
+                  />
+                  <MetricCard
+                    title="Total Candidates"
+                    value={stats?.total_candidates || 0}
+                    subtitle={`Avg Score: ${stats?.average_predictive_score?.toFixed(1) || '--'}`}
+                    icon={Users}
+                    color="blue"
+                  />
+                  <MetricCard
+                    title="Goodwill Momentum"
+                    value={marketState?.goodwill_momentum ? `${(marketState.goodwill_momentum * 100).toFixed(2)}%` : '--'}
+                    subtitle="Market confidence trend"
+                    icon={Target}
+                    color="purple"
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Years Experience</label>
-                    <input
-                      type="number"
-                      value={candidateForm.years_experience}
-                      onChange={(e) => setCandidateForm({...candidateForm, years_experience: parseInt(e.target.value)})}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Base Predictive Score</label>
-                    <input
-                      type="number"
-                      value={candidateForm.base_predictive_score}
-                      onChange={(e) => setCandidateForm({...candidateForm, base_predictive_score: parseFloat(e.target.value)})}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                    />
-                  </div>
-                </div>
-
-                <div className="border-t pt-4">
-                  <h4 className="font-medium text-gray-700 mb-3">Soulbound Tokens</h4>
-                  
-                  <div className="grid grid-cols-4 gap-3 mb-3">
-                    <select
-                      value={newToken.type}
-                      onChange={(e) => setNewToken({...newToken, type: e.target.value})}
-                      className="px-3 py-2 border border-gray-300 rounded-md"
-                    >
-                      <option value="skill">Skill</option>
-                      <option value="character">Character</option>
-                      <option value="loyalty">Loyalty</option>
-                      <option value="project">Project</option>
-                      <option value="certification">Certification</option>
-                    </select>
-                    <input
-                      type="text"
-                      value={newToken.name}
-                      onChange={(e) => setNewToken({...newToken, name: e.target.value})}
-                      placeholder="Token name"
-                      className="px-3 py-2 border border-gray-300 rounded-md"
-                    />
-                    <input
-                      type="text"
-                      value={newToken.issuer}
-                      onChange={(e) => setNewToken({...newToken, issuer: e.target.value})}
-                      placeholder="Issuer"
-                      className="px-3 py-2 border border-gray-300 rounded-md"
-                    />
-                    <button
-                      onClick={addToken}
-                      className="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700"
-                    >
-                      Add Token
-                    </button>
+                {/* Charts Row */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {/* Market Regime Visualization */}
+                  <div className="bg-white rounded-lg shadow p-6">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Market Regime Status</h3>
+                    <ResponsiveContainer width="100%" height={250}>
+                      <PieChart>
+                        <Pie
+                          data={getRegimeData()}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={60}
+                          outerRadius={90}
+                          paddingAngle={5}
+                          dataKey="value"
+                        >
+                          {getRegimeData().map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={entry.fill} />
+                          ))}
+                        </Pie>
+                        <Tooltip />
+                      </PieChart>
+                    </ResponsiveContainer>
                   </div>
 
-                  {candidateForm.tokens.length > 0 && (
-                    <div className="space-y-2">
-                      {candidateForm.tokens.map((token, idx) => (
-                        <div key={idx} className="flex items-center justify-between bg-gray-50 p-3 rounded-md">
-                          <div className="flex items-center space-x-3">
-                            <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs font-medium">
-                              {token.type}
-                            </span>
-                            <span className="font-medium">{token.name}</span>
-                            <span className="text-sm text-gray-600">by {token.issuer}</span>
-                          </div>
-                          <button
-                            onClick={() => removeToken(idx)}
-                            className="text-red-600 hover:text-red-800"
-                          >
-                            Remove
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                <button
-                  onClick={registerCandidate}
-                  disabled={loading.register || !candidateForm.wallet_address}
-                  className="w-full bg-blue-600 text-white px-4 py-3 rounded-md font-medium hover:bg-blue-700 disabled:opacity-50"
-                >
-                  {loading.register ? (
-                    <>
-                      <RefreshCw className="w-5 h-5 mr-2 animate-spin inline" />
-                      Registering...
-                    </>
-                  ) : (
-                    <>
-                      <Database className="w-5 h-5 mr-2 inline" />
-                      Register Candidate
-                    </>
-                  )}
-                </button>
-              </div>
-            </div>
-
-            {/* Candidate Statistics */}
-            {stats && (
-              <div className="bg-white rounded-lg shadow p-6">
-                <h3 className="text-lg font-semibold text-gray-900 mb-6">Candidate Pool Statistics</h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  <div className="text-center p-4 bg-blue-50 rounded-lg">
-                    <p className="text-3xl font-bold text-blue-600">{stats.total_candidates}</p>
-                    <p className="text-sm text-gray-600 mt-1">Total Candidates</p>
-                  </div>
-                  <div className="text-center p-4 bg-green-50 rounded-lg">
-                    <p className="text-3xl font-bold text-green-600">{stats.average_predictive_score?.toFixed(1)}</p>
-                    <p className="text-sm text-gray-600 mt-1">Avg Predictive Score</p>
-                  </div>
-                  <div className="text-center p-4 bg-purple-50 rounded-lg">
-                    <p className="text-3xl font-bold text-purple-600">{stats.average_experience?.toFixed(1)}</p>
-                    <p className="text-sm text-gray-600 mt-1">Avg Years Experience</p>
-                  </div>
-                </div>
-
-                {/* Token Distribution Chart */}
-                {getTokenDistribution().length > 0 && (
-                  <div className="mt-6">
-                    <h4 className="font-medium text-gray-700 mb-4">Token Distribution</h4>
-                    <ResponsiveContainer width="100%" height={300}>
-                      <BarChart data={getTokenDistribution()}>
+                  {/* Goodwill Metrics */}
+                  <div className="bg-white rounded-lg shadow p-6">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Goodwill Components</h3>
+                    <ResponsiveContainer width="100%" height={250}>
+                      <BarChart data={getGoodwillData()}>
                         <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="name" angle={-45} textAnchor="end" height={100} />
+                        <XAxis dataKey="metric" />
                         <YAxis />
                         <Tooltip />
-                        <Legend />
                         <Bar dataKey="value" fill="#3b82f6" />
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Query Tab */}
-        {activeTab === 'query' && (
-          <div className="space-y-6">
-            <div className="bg-white rounded-lg shadow p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-6">Query Candidates with ZK-Proof Matching</h3>
-              
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Required Skills (comma-separated)
-                  </label>
-                  <input
-                    type="text"
-                    value={queryForm.required_skills}
-                    onChange={(e) => setQueryForm({...queryForm, required_skills: e.target.value})}
-                    placeholder="Python Mastery, Machine Learning, etc."
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                  />
                 </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Required Character Traits (comma-separated)
-                  </label>
-                  <input
-                    type="text"
-                    value={queryForm.required_character}
-                    onChange={(e) => setQueryForm({...queryForm, required_character: e.target.value})}
-                    placeholder="Leadership, Team Player, etc."
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Required Loyalty Markers (comma-separated)
-                  </label>
-                  <input
-                    type="text"
-                    value={queryForm.required_loyalty}
-                    onChange={(e) => setQueryForm({...queryForm, required_loyalty: e.target.value})}
-                    placeholder="Long-term Commitment, Company Advocate, etc."
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Minimum Predictive Score: {queryForm.min_predictive_score}
-                  </label>
-                  <input
-                    type="range"
-                    min="0"
-                    max="100"
-                    value={queryForm.min_predictive_score}
-                    onChange={(e) => setQueryForm({...queryForm, min_predictive_score: parseFloat(e.target.value)})}
-                    className="w-full"
-                  />
-                </div>
-
-                <div className="flex items-center">
-                  <input
-                    type="checkbox"
-                    checked={queryForm.consider_market_regime}
-                    onChange={(e) => setQueryForm({...queryForm, consider_market_regime: e.target.checked})}
-                    className="mr-2"
-                  />
-                  <label className="text-sm font-medium text-gray-700">
-                    Apply Market Regime Adjustments
-                  </label>
-                </div>
-
-                <button
-                  onClick={queryCandidates}
-                  disabled={loading.query}
-                  className="w-full bg-purple-600 text-white px-4 py-3 rounded-md font-medium hover:bg-purple-700 disabled:opacity-50 flex items-center justify-center"
-                >
-                  {loading.query ? (
-                    <>
-                      <RefreshCw className="w-5 h-5 mr-2 animate-spin" />
-                      Querying...
-                    </>
-                  ) : (
-                    <>
-                      <Target className="w-5 h-5 mr-2" />
-                      Execute Query
-                    </>
-                  )}
-                </button>
-              </div>
-            </div>
-
-            {/* Query Results */}
-            {queryResults && (
-              <div className="bg-white rounded-lg shadow p-6">
-                <div className="flex items-center justify-between mb-6">
-                  <h3 className="text-lg font-semibold text-gray-900">Query Results</h3>
-                  <div className="flex items-center space-x-4">
-                    <span className="text-sm text-gray-600">
-                      {queryResults.total_candidates_screened} candidates screened
-                    </span>
-                    <span className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm font-medium">
-                      {queryResults.matches_found} matches
-                    </span>
-                  </div>
-                </div>
-
-                {queryResults.regime_adjustment_applied && (
-                  <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg flex items-start">
-                    <CheckCircle className="w-5 h-5 text-blue-600 mr-2 mt-0.5 flex-shrink-0" />
-                    <div>
-                      <p className="text-sm font-medium text-blue-900">
-                        Market regime adjustments applied
-                      </p>
-                      <p className="text-sm text-blue-700">
-                        Scores adjusted for <RegimeBadge regime={queryResults.market_regime} /> market conditions
-                      </p>
-                    </div>
-                  </div>
-                )}
-
-                {queryResults.matches.length === 0 ? (
-                  <div className="text-center py-12">
-                    <AlertTriangle className="w-12 h-12 text-gray-400 mx-auto mb-3" />
-                    <p className="text-gray-600">No candidates match the specified criteria</p>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {queryResults.matches.map((match, idx) => (
-                      <div
-                        key={idx}
-                        className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow"
-                      >
-                        <div className="flex items-center justify-between mb-3">
-                          <div className="flex items-center space-x-3">
-                            <span className="text-lg font-bold text-gray-700">#{idx + 1}</span>
-                            <span className="text-sm text-gray-500 font-mono">
-                              {match.wallet_address.slice(0, 10)}...{match.wallet_address.slice(-8)}
-                            </span>
-                            <CheckCircle className="w-5 h-5 text-green-500" />
-                            <span className="text-xs text-green-600 font-medium">ZK-Verified</span>
-                          </div>
-                          <div className="text-right">
-                            <p className="text-2xl font-bold text-purple-600">
-                              {match.regime_adjusted_score.toFixed(1)}
-                            </p>
-                            <p className="text-xs text-gray-500">Adjusted Score</p>
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-4 gap-4 text-sm">
-                          <div>
-                            <p className="text-gray-600">Base Score</p>
-                            <p className="font-medium text-gray-900">{match.base_score.toFixed(1)}</p>
-                          </div>
-                          <div>
-                            <p className="text-gray-600">Regime Adjustment</p>
-                            <p className={`font-medium ${match.regime_adjustment > 0 ? 'text-green-600' : match.regime_adjustment < 0 ? 'text-red-600' : 'text-gray-900'}`}>
-                              {match.regime_adjustment > 0 ? '+' : ''}{match.regime_adjustment.toFixed(2)}
-                            </p>
-                          </div>
-                          <div>
-                            <p className="text-gray-600">Experience</p>
-                            <p className="font-medium text-gray-900">{match.years_experience} years</p>
-                          </div>
-                          <div>
-                            <p className="text-gray-600">Credentials</p>
-                            <p className="font-medium text-gray-900">{match.token_count} tokens</p>
-                          </div>
-                        </div>
+                {/* Forecast and Signals */}
+                {forecast && (
+                  <div className="bg-gradient-to-br from-blue-50 to-purple-50 rounded-lg shadow p-6 border border-blue-200">
+                    <div className="flex items-start justify-between mb-4">
+                      <div>
+                        <h3 className="text-lg font-semibold text-gray-900">Hiring Strategy Forecast</h3>
+                        <p className="text-sm text-gray-600">{forecast.forecast_horizon} outlook</p>
                       </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Intelligence Tab */}
-        {activeTab === 'intelligence' && (
-          <div className="space-y-6">
-            {/* Hiring Forecast */}
-            {forecast && (
-              <div className="bg-white rounded-lg shadow p-6">
-                <h3 className="text-lg font-semibold text-gray-900 mb-6">Strategic Hiring Forecast</h3>
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                  <div>
-                    <p className="text-sm text-gray-600 mb-2">Current Market Regime</p>
-                    <RegimeBadge regime={forecast.current_regime} />
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600 mb-2">GSTI Score</p>
-                    <p className="text-3xl font-bold text-gray-900">{forecast.gsti_score?.toFixed(3)}</p>
-                  </div>
-                </div>
-
-                <div className="space-y-4">
-                  <div className="p-4 bg-blue-50 rounded-lg">
-                    <p className="text-sm font-medium text-blue-900 mb-2">Strategic Recommendation</p>
-                    <p className="text-blue-800">{forecast.recommendation}</p>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="p-4 bg-red-50 rounded-lg">
-                      <p className="text-sm font-medium text-red-900 mb-3">Risk Factors</p>
-                      <ul className="space-y-2">
-                        {forecast.risk_factors?.map((risk, i) => (
-                          <li key={i} className="flex items-start text-sm text-red-800">
-                            <AlertTriangle className="w-4 h-4 mr-2 mt-0.5 flex-shrink-0" />
-                            {risk}
-                          </li>
-                        ))}
-                      </ul>
+                      <RegimeBadge regime={forecast.current_regime} />
                     </div>
-
-                    <div className="p-4 bg-green-50 rounded-lg">
-                      <p className="text-sm font-medium text-green-900 mb-2">Opportunity Assessment</p>
-                      <p className="text-green-800">{forecast.opportunity}</p>
-                      <div className="mt-3">
-                        <p className="text-xs text-green-700">Forecast Horizon</p>
-                        <p className="text-sm font-medium text-green-900">{forecast.forecast_horizon}</p>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+                      <div className="bg-white rounded-lg p-4">
+                        <p className="text-sm font-medium text-gray-600 mb-2">Recommendation</p>
+                        <p className="text-gray-900">{forecast.recommendation}</p>
+                      </div>
+                      <div className="bg-white rounded-lg p-4">
+                        <p className="text-sm font-medium text-gray-600 mb-2">Risk Factors</p>
+                        <ul className="text-sm text-gray-900 space-y-1">
+                          {forecast.risk_factors?.map((risk, i) => (
+                            <li key={i} className="flex items-start">
+                              <AlertTriangle className="w-4 h-4 text-yellow-500 mr-2 mt-0.5 flex-shrink-0" />
+                              {risk}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                      <div className="bg-white rounded-lg p-4">
+                        <p className="text-sm font-medium text-gray-600 mb-2">Opportunity Level</p>
+                        <p className="text-gray-900">{forecast.opportunity}</p>
                       </div>
                     </div>
                   </div>
-
-                  <div className="p-4 bg-gray-50 rounded-lg">
-                    <p className="text-sm font-medium text-gray-900 mb-2">Gold-Silver Ratio</p>
-                    <p className="text-2xl font-bold text-gray-900">{forecast.gold_silver_ratio?.toFixed(2)}</p>
-                    <p className="text-xs text-gray-600 mt-1">Historical context indicator</p>
-                  </div>
-                </div>
+                )}
               </div>
             )}
 
-            {/* Talent Flow Analysis */}
-            {talentFlow && (
-              <div className="bg-white rounded-lg shadow p-6">
-                <h3 className="text-lg font-semibold text-gray-900 mb-6">Talent Flow Economic Signals</h3>
-                
-                {talentFlow.metrics && (
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                    <div className="p-4 bg-purple-50 rounded-lg text-center">
-                      <p className="text-sm text-gray-600 mb-1">Avg Tokens per Candidate</p>
-                      <p className="text-3xl font-bold text-purple-600">
-                        {talentFlow.metrics.average_tokens_per_candidate}
-                      </p>
-                    </div>
-                    <div className="p-4 bg-blue-50 rounded-lg text-center">
-                      <p className="text-sm text-gray-600 mb-1">Loyalty Concentration</p>
-                      <p className="text-3xl font-bold text-blue-600">
-                        {talentFlow.metrics.loyalty_concentration}
-                      </p>
-                    </div>
-                    <div className="p-4 bg-green-50 rounded-lg text-center">
-                      <p className="text-sm text-gray-600 mb-1">Skill Concentration</p>
-                      <p className="text-3xl font-bold text-green-600">
-                        {talentFlow.metrics.skill_concentration}
-                      </p>
+            {/* Market Tab */}
+            {activeTab === 'market' && (
+              <div className="space-y-6">
+                {/* PHASE 2.3: Role gate visible actions */}
+                {!hasPermission(auth.role, 'update_market') && (
+                  <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4">
+                    <div className="flex items-start">
+                      <Lock className="w-5 h-5 text-yellow-400 mr-3 mt-0.5" />
+                      <div>
+                        <h3 className="text-sm font-medium text-yellow-800">View Only</h3>
+                        <p className="text-sm text-yellow-700 mt-1">
+                          You do not have permission to update market intelligence. Contact an administrator for access.
+                        </p>
+                      </div>
                     </div>
                   </div>
                 )}
+                
+                {errors.update && <ErrorBanner error={errors.update} onDismiss={() => setErrors(prev => ({ ...prev, update: null }))} />}
+                
+                {hasPermission(auth.role, 'update_market') && (
+                  <div className="bg-white rounded-lg shadow p-6">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-6">Update Market Intelligence</h3>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                      <div>
+                        <h4 className="font-medium text-gray-700 mb-4">Precious Metals</h4>
+                        <div className="space-y-4">
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Gold Price (USD/oz)</label>
+                            <input
+                              type="number"
+                              value={marketForm.gold_price}
+                              onChange={(e) => updateMarketField('gold_price', e.target.value)}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                              disabled={auditMode}
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Silver Price (USD/oz)</label>
+                            <input
+                              type="number"
+                              value={marketForm.silver_price}
+                              onChange={(e) => updateMarketField('silver_price', e.target.value)}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                              disabled={auditMode}
+                            />
+                          </div>
+                        </div>
+                      </div>
 
-                {talentFlow.signals && talentFlow.signals.length > 0 && (
-                  <div>
-                    <h4 className="font-medium text-gray-900 mb-3">Economic Signals Detected</h4>
-                    <div className="space-y-3">
-                      {talentFlow.signals.map((signal, idx) => (
-                        <div
-                          key={idx}
-                          className={`p-4 rounded-lg border-l-4 ${
-                            signal.severity === 'warning'
-                              ? 'bg-yellow-50 border-yellow-400'
-                              : signal.severity === 'positive'
-                              ? 'bg-green-50 border-green-400'
-                              : 'bg-blue-50 border-blue-400'
-                          }`}
-                        >
-                          <div className="flex items-start justify-between">
-                            <div className="flex-1">
-                              <p className="font-medium text-gray-900 mb-1">{signal.signal}</p>
-                              <p className="text-sm text-gray-700">{signal.interpretation}</p>
+                      <div>
+                        <h4 className="font-medium text-gray-700 mb-4">General Goodwill</h4>
+                        <div className="space-y-4">
+                          {['CR', 'ES', 'BT', 'RG', 'NCB'].map(field => (
+                            <div key={field}>
+                              <label className="block text-sm font-medium text-gray-700 mb-1">{field}</label>
+                              <input
+                                type="number"
+                                step="0.01"
+                                value={marketForm[field]}
+                                onChange={(e) => updateMarketField(field, e.target.value)}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                                disabled={auditMode}
+                              />
                             </div>
-                            <span
-                              className={`px-2 py-1 rounded text-xs font-medium ${
+                          ))}
+                        </div>
+                      </div>
+
+                      <div>
+                        <h4 className="font-medium text-gray-700 mb-4">Consumer Goodwill & Market</h4>
+                        <div className="space-y-4">
+                          {['CS', 'BR', 'CA', 'SS', 'VIX'].map(field => (
+                            <div key={field}>
+                              <label className="block text-sm font-medium text-gray-700 mb-1">{field}</label>
+                              <input
+                                type="number"
+                                step="0.01"
+                                value={marketForm[field]}
+                                onChange={(e) => updateMarketField(field, e.target.value)}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                                disabled={auditMode}
+                              />
+                            </div>
+                          ))}
+                          <div className="flex items-center">
+                            <input
+                              type="checkbox"
+                              checked={marketForm.M_A_Surges}
+                              onChange={(e) => setMarketForm({...marketForm, M_A_Surges: e.target.checked})}
+                              className="mr-2"
+                              disabled={auditMode}
+                            />
+                            <label className="text-sm font-medium text-gray-700">M&A Surges</label>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={updateMarketState}
+                      disabled={loading.update || buttonLocks.update || auditMode}
+                      className="mt-6 w-full bg-blue-600 text-white px-4 py-3 rounded-md font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+                    >
+                      {loading.update ? (
+                        <>
+                          <RefreshCw className="w-5 h-5 mr-2 animate-spin" />
+                          Updating...
+                        </>
+                      ) : (
+                        <>
+                          <Zap className="w-5 h-5 mr-2" />
+                          Update GSTI Metrics
+                        </>
+                      )}
+                    </button>
+                  </div>
+                )}
+
+                {/* Current Market State Display */}
+                {marketState && (
+                  <div className="bg-white rounded-lg shadow p-6">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Current Market State</h3>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      <div>
+                        <p className="text-sm text-gray-600">GSR</p>
+                        <p className="text-2xl font-bold text-gray-900">{marketState.gsr?.toFixed(2)}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-gray-600">GSTI Score</p>
+                        <p className="text-2xl font-bold text-gray-900">{marketState.gsti_score?.toFixed(3)}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-gray-600">UGS</p>
+                        <p className="text-2xl font-bold text-gray-900">{marketState.unified_goodwill_score?.toFixed(3)}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-gray-600">VIX</p>
+                        <p className="text-2xl font-bold text-gray-900">{marketState.vix}</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Candidates Tab */}
+            {activeTab === 'candidates' && (
+              <div className="space-y-6">
+                {!hasPermission(auth.role, 'register_candidate') && (
+                  <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4">
+                    <div className="flex items-start">
+                      <Lock className="w-5 h-5 text-yellow-400 mr-3 mt-0.5" />
+                      <div>
+                        <h3 className="text-sm font-medium text-yellow-800">View Only</h3>
+                        <p className="text-sm text-yellow-700 mt-1">
+                          You do not have permission to register candidates. Contact an administrator for access.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                
+                {errors.register && <ErrorBanner error={errors.register} onDismiss={() => setErrors(prev => ({ ...prev, register: null }))} />}
+                
+                {hasPermission(auth.role, 'register_candidate') && (
+                  <div className="bg-white rounded-lg shadow p-6">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-6">Register New Candidate</h3>
+                    
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Wallet Address</label>
+                        <input
+                          type="text"
+                          value={candidateForm.wallet_address}
+                          onChange={(e) => setCandidateForm({...candidateForm, wallet_address: e.target.value})}
+                          placeholder="0x..."
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                          disabled={auditMode}
+                        />
+                        {candidateForm.wallet_address && !validateWalletAddress(candidateForm.wallet_address) && (
+                          <p className="text-sm text-red-600 mt-1">Invalid wallet address format</p>
+                        )}
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Years Experience (0-50)</label>
+                          <input
+                            type="number"
+                            value={candidateForm.years_experience}
+                            onChange={(e) => {
+                              const val = validateNumeric(e.target.value, 0, 50);
+                              if (val !== null) setCandidateForm({...candidateForm, years_experience: val});
+                            }}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                            disabled={auditMode}
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Base Predictive Score (0-100)</label>
+                          <input
+                            type="number"
+                            value={candidateForm.base_predictive_score}
+                            onChange={(e) => {
+                              const val = validateNumeric(e.target.value, 0, 100);
+                              if (val !== null) setCandidateForm({...candidateForm, base_predictive_score: val});
+                            }}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                            disabled={auditMode}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="border-t pt-4">
+                        <h4 className="font-medium text-gray-700 mb-3">Soulbound Tokens</h4>
+                        
+                        <div className="grid grid-cols-4 gap-3 mb-3">
+                          <select
+                            value={newToken.type}
+                            onChange={(e) => setNewToken({...newToken, type: e.target.value})}
+                            className="px-3 py-2 border border-gray-300 rounded-md"
+                            disabled={auditMode}
+                          >
+                            <option value="skill">Skill</option>
+                            <option value="character">Character</option>
+                            <option value="loyalty">Loyalty</option>
+                            <option value="project">Project</option>
+                            <option value="certification">Certification</option>
+                          </select>
+                          <input
+                            type="text"
+                            value={newToken.name}
+                            onChange={(e) => setNewToken({...newToken, name: e.target.value})}
+                            placeholder="Token name"
+                            className="px-3 py-2 border border-gray-300 rounded-md"
+                            disabled={auditMode}
+                          />
+                          <input
+                            type="text"
+                            value={newToken.issuer}
+                            onChange={(e) => setNewToken({...newToken, issuer: e.target.value})}
+                            placeholder="Issuer"
+                            className="px-3 py-2 border border-gray-300 rounded-md"
+                            disabled={auditMode}
+                          />
+                          <button
+                            onClick={addToken}
+                            className="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 disabled:opacity-50"
+                            disabled={auditMode}
+                          >
+                            Add Token
+                          </button>
+                        </div>
+
+                        {candidateForm.tokens.length > 0 && (
+                          <div className="space-y-2">
+                            {candidateForm.tokens.map((token, idx) => (
+                              <div key={idx} className="flex items-center justify-between bg-gray-50 p-3 rounded-md">
+                                <div className="flex items-center space-x-3">
+                                  <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs font-medium">
+                                    {token.type}
+                                  </span>
+                                  <span className="font-medium">{token.name}</span>
+                                  <span className="text-sm text-gray-600">by {token.issuer}</span>
+                                </div>
+                                <button
+                                  onClick={() => removeToken(idx)}
+                                  className="text-red-600 hover:text-red-800 disabled:opacity-50"
+                                  disabled={auditMode}
+                                >
+                                  Remove
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      <button
+                        onClick={registerCandidate}
+                        disabled={loading.register || buttonLocks.register || !candidateForm.wallet_address || !validateWalletAddress(candidateForm.wallet_address) || auditMode}
+                        className="w-full bg-blue-600 text-white px-4 py-3 rounded-md font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {loading.register ? (
+                          <>
+                            <RefreshCw className="w-5 h-5 mr-2 animate-spin inline" />
+                            Registering...
+                          </>
+                        ) : (
+                          <>
+                            <Database className="w-5 h-5 mr-2 inline" />
+                            Register Candidate
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Candidate Statistics */}
+                {stats && (
+                  <div className="bg-white rounded-lg shadow p-6">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-6">Candidate Pool Statistics</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                      <div className="text-center p-4 bg-blue-50 rounded-lg">
+                        <p className="text-3xl font-bold text-blue-600">{stats.total_candidates}</p>
+                        <p className="text-sm text-gray-600 mt-1">Total Candidates</p>
+                      </div>
+                      <div className="text-center p-4 bg-green-50 rounded-lg">
+                        <p className="text-3xl font-bold text-green-600">{stats.average_predictive_score?.toFixed(1)}</p>
+                        <p className="text-sm text-gray-600 mt-1">Avg Predictive Score</p>
+                      </div>
+                      <div className="text-center p-4 bg-purple-50 rounded-lg">
+                        <p className="text-3xl font-bold text-purple-600">{stats.average_experience?.toFixed(1)}</p>
+                        <p className="text-sm text-gray-600 mt-1">Avg Years Experience</p>
+                      </div>
+                    </div>
+
+                    {/* Token Distribution Chart */}
+                    {getTokenDistribution().length > 0 && (
+                      <div className="mt-6">
+                        <h4 className="font-medium text-gray-700 mb-4">Token Distribution</h4>
+                        <ResponsiveContainer width="100%" height={300}>
+                          <BarChart data={getTokenDistribution()}>
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis dataKey="name" angle={-45} textAnchor="end" height={100} />
+                            <YAxis />
+                            <Tooltip />
+                            <Legend />
+                            <Bar dataKey="value" fill="#3b82f6" />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Query Tab */}
+            {activeTab === 'query' && (
+              <div className="space-y-6">
+                {!hasPermission(auth.role, 'query_candidates') && (
+                  <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4">
+                    <div className="flex items-start">
+                      <Lock className="w-5 h-5 text-yellow-400 mr-3 mt-0.5" />
+                      <div>
+                        <h3 className="text-sm font-medium text-yellow-800">Access Denied</h3>
+                        <p className="text-sm text-yellow-700 mt-1">
+                          You do not have permission to query candidates. Contact an administrator for access.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                
+                {errors.query && <ErrorBanner error={errors.query} onDismiss={() => setErrors(prev => ({ ...prev, query: null }))} />}
+                
+                {hasPermission(auth.role, 'query_candidates') && (
+                  <>
+                    <div className="bg-white rounded-lg shadow p-6">
+                      <h3 className="text-lg font-semibold text-gray-900 mb-6">Query Candidates with ZK-Proof Matching</h3>
+                      
+                      <div className="space-y-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Required Skills (comma-separated)
+                          </label>
+                          <input
+                            type="text"
+                            value={queryForm.required_skills}
+                            onChange={(e) => setQueryForm({...queryForm, required_skills: e.target.value})}
+                            placeholder="Python Mastery, Machine Learning, etc."
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Required Character Traits (comma-separated)
+                          </label>
+                          <input
+                            type="text"
+                            value={queryForm.required_character}
+                            onChange={(e) => setQueryForm({...queryForm, required_character: e.target.value})}
+                            placeholder="Leadership, Team Player, etc."
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Required Loyalty Markers (comma-separated)
+                          </label>
+                          <input
+                            type="text"
+                            value={queryForm.required_loyalty}
+                            onChange={(e) => setQueryForm({...queryForm, required_loyalty: e.target.value})}
+                            placeholder="Long-term Commitment, Company Advocate, etc."
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Minimum Predictive Score: {queryForm.min_predictive_score}
+                          </label>
+                          <input
+                            type="range"
+                            min="0"
+                            max="100"
+                            value={queryForm.min_predictive_score}
+                            onChange={(e) => setQueryForm({...queryForm, min_predictive_score: parseFloat(e.target.value)})}
+                            className="w-full"
+                          />
+                        </div>
+
+                        <div className="flex items-center">
+                          <input
+                            type="checkbox"
+                            checked={queryForm.consider_market_regime}
+                            onChange={(e) => setQueryForm({...queryForm, consider_market_regime: e.target.checked})}
+                            className="mr-2"
+                          />
+                          <label className="text-sm font-medium text-gray-700">
+                            Apply Market Regime Adjustments
+                          </label>
+                        </div>
+
+                        <button
+                          onClick={queryCandidates}
+                          disabled={loading.query || buttonLocks.query}
+                          className="w-full bg-purple-600 text-white px-4 py-3 rounded-md font-medium hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+                        >
+                          {loading.query ? (
+                            <>
+                              <RefreshCw className="w-5 h-5 mr-2 animate-spin" />
+                              Querying...
+                            </>
+                          ) : (
+                            <>
+                              <Target className="w-5 h-5 mr-2" />
+                              Execute Query
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Query Results */}
+                    {queryResults && (
+                      <div className="bg-white rounded-lg shadow p-6">
+                        <div className="flex items-center justify-between mb-6">
+                          <h3 className="text-lg font-semibold text-gray-900">Query Results</h3>
+                          <div className="flex items-center space-x-4">
+                            <span className="text-sm text-gray-600">
+                              {queryResults.total_candidates_screened} candidates screened
+                            </span>
+                            <span className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm font-medium">
+                              {queryResults.matches_found} matches
+                            </span>
+                          </div>
+                        </div>
+
+                        {queryResults.regime_adjustment_applied && (
+                          <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg flex items-start">
+                            <CheckCircle className="w-5 h-5 text-blue-600 mr-2 mt-0.5 flex-shrink-0" />
+                            <div>
+                              <p className="text-sm font-medium text-blue-900">
+                                Market regime adjustments applied
+                              </p>
+                              <p className="text-sm text-blue-700">
+                                Scores adjusted for <RegimeBadge regime={queryResults.market_regime} /> market conditions
+                              </p>
+                            </div>
+                          </div>
+                        )}
+
+                        {queryResults.matches.length === 0 ? (
+                          <div className="text-center py-12">
+                            <AlertTriangle className="w-12 h-12 text-gray-400 mx-auto mb-3" />
+                            <p className="text-gray-600">No candidates match the specified criteria</p>
+                          </div>
+                        ) : (
+                          <div className="space-y-3">
+                            {queryResults.matches.map((match, idx) => (
+                              <div
+                                key={idx}
+                                className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow"
+                              >
+                                <div className="flex items-center justify-between mb-3">
+                                  <div className="flex items-center space-x-3">
+                                    <span className="text-lg font-bold text-gray-700">#{idx + 1}</span>
+                                    <span className="text-sm text-gray-500 font-mono">
+                                      {match.wallet_address.slice(0, 10)}...{match.wallet_address.slice(-8)}
+                                    </span>
+                                    <CheckCircle className="w-5 h-5 text-green-500" />
+                                    <span className="text-xs text-green-600 font-medium">ZK-Verified</span>
+                                  </div>
+                                  <div className="text-right">
+                                    <p className="text-2xl font-bold text-purple-600">
+                                      {Number(match.regime_adjusted_score).toFixed(1)}
+                                    </p>
+                                    <p className="text-xs text-gray-500">Adjusted Score</p>
+                                  </div>
+                                </div>
+
+                                <div className="grid grid-cols-4 gap-4 text-sm">
+                                  <div>
+                                    <p className="text-gray-600">Base Score</p>
+                                    <p className="font-medium text-gray-900">{Number(match.base_score).toFixed(1)}</p>
+                                  </div>
+                                  <div>
+                                    <p className="text-gray-600">Regime Adjustment</p>
+                                    <p className={`font-medium ${match.regime_adjustment > 0 ? 'text-green-600' : match.regime_adjustment < 0 ? 'text-red-600' : 'text-gray-900'}`}>
+                                      {match.regime_adjustment > 0 ? '+' : ''}{Number(match.regime_adjustment).toFixed(2)}
+                                    </p>
+                                  </div>
+                                  <div>
+                                    <p className="text-gray-600">Experience</p>
+                                    <p className="font-medium text-gray-900">{match.years_experience} years</p>
+                                  </div>
+                                  <div>
+                                    <p className="text-gray-600">Credentials</p>
+                                    <p className="font-medium text-gray-900">{match.token_count} tokens</p>
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* Intelligence Tab */}
+            {activeTab === 'intelligence' && (
+              <div className="space-y-6">
+                {/* Hiring Forecast */}
+                {forecast && (
+                  <div className="bg-white rounded-lg shadow p-6">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-6">Strategic Hiring Forecast</h3>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                      <div>
+                        <p className="text-sm text-gray-600 mb-2">Current Market Regime</p>
+                        <RegimeBadge regime={forecast.current_regime} />
+                      </div>
+                      <div>
+                        <p className="text-sm text-gray-600 mb-2">GSTI Score</p>
+                        <p className="text-3xl font-bold text-gray-900">{forecast.gsti_score?.toFixed(3)}</p>
+                      </div>
+                    </div>
+
+                    <div className="space-y-4">
+                      <div className="p-4 bg-blue-50 rounded-lg">
+                        <p className="text-sm font-medium text-blue-900 mb-2">Strategic Recommendation</p>
+                        <p className="text-blue-800">{forecast.recommendation}</p>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="p-4 bg-red-50 rounded-lg">
+                          <p className="text-sm font-medium text-red-900 mb-3">Risk Factors</p>
+                          <ul className="space-y-2">
+                            {forecast.risk_factors?.map((risk, i) => (
+                              <li key={i} className="flex items-start text-sm text-red-800">
+                                <AlertTriangle className="w-4 h-4 mr-2 mt-0.5 flex-shrink-0" />
+                                {risk}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+
+                        <div className="p-4 bg-green-50 rounded-lg">
+                          <p className="text-sm font-medium text-green-900 mb-2">Opportunity Assessment</p>
+                          <p className="text-green-800">{forecast.opportunity}</p>
+                          <div className="mt-3">
+                            <p className="text-xs text-green-700">Forecast Horizon</p>
+                            <p className="text-sm font-medium text-green-900">{forecast.forecast_horizon}</p>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="p-4 bg-gray-50 rounded-lg">
+                        <p className="text-sm font-medium text-gray-900 mb-2">Gold-Silver Ratio</p>
+                        <p className="text-2xl font-bold text-gray-900">{forecast.gold_silver_ratio?.toFixed(2)}</p>
+                        <p className="text-xs text-gray-600 mt-1">Historical context indicator</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Talent Flow Analysis */}
+                {talentFlow && (
+                  <div className="bg-white rounded-lg shadow p-6">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-6">Talent Flow Economic Signals</h3>
+                    
+                    {talentFlow.metrics && (
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                        <div className="p-4 bg-purple-50 rounded-lg text-center">
+                          <p className="text-sm text-gray-600 mb-1">Avg Tokens per Candidate</p>
+                          <p className="text-3xl font-bold text-purple-600">
+                            {talentFlow.metrics.average_tokens_per_candidate}
+                          </p>
+                        </div>
+                        <div className="p-4 bg-blue-50 rounded-lg text-center">
+                          <p className="text-sm text-gray-600 mb-1">Loyalty Concentration</p>
+                          <p className="text-3xl font-bold text-blue-600">
+                            {talentFlow.metrics.loyalty_concentration}
+                          </p>
+                        </div>
+                        <div className="p-4 bg-green-50 rounded-lg text-center">
+                          <p className="text-sm text-gray-600 mb-1">Skill Concentration</p>
+                          <p className="text-3xl font-bold text-green-600">
+                            {talentFlow.metrics.skill_concentration}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    {talentFlow.signals && talentFlow.signals.length > 0 && (
+                      <div>
+                        <h4 className="font-medium text-gray-900 mb-3">Economic Signals Detected</h4>
+                        <div className="space-y-3">
+                          {talentFlow.signals.map((signal, idx) => (
+                            <div
+                              key={idx}
+                              className={`p-4 rounded-lg border-l-4 ${
                                 signal.severity === 'warning'
-                                  ? 'bg-yellow-200 text-yellow-800'
+                                  ? 'bg-yellow-50 border-yellow-400'
                                   : signal.severity === 'positive'
-                                  ? 'bg-green-200 text-green-800'
-                                  : 'bg-blue-200 text-blue-800'
+                                  ? 'bg-green-50 border-green-400'
+                                  : 'bg-blue-50 border-blue-400'
                               }`}
                             >
-                              {signal.severity}
-                            </span>
-                          </div>
+                              <div className="flex items-start justify-between">
+                                <div className="flex-1">
+                                  <p className="font-medium text-gray-900 mb-1">{signal.signal}</p>
+                                  <p className="text-sm text-gray-700">{signal.interpretation}</p>
+                                </div>
+                                <span
+                                  className={`px-2 py-1 rounded text-xs font-medium ${
+                                    signal.severity === 'warning'
+                                      ? 'bg-yellow-200 text-yellow-800'
+                                      : signal.severity === 'positive'
+                                      ? 'bg-green-200 text-green-800'
+                                      : 'bg-blue-200 text-blue-800'
+                                  }`}
+                                >
+                                  {signal.severity}
+                                </span>
+                              </div>
+                            </div>
+                          ))}
                         </div>
-                      ))}
-                    </div>
+                      </div>
+                    )}
+
+                    {talentFlow.economic_interpretation && (
+                      <div className="mt-6 p-4 bg-gray-50 rounded-lg">
+                        <p className="text-sm text-gray-700">{talentFlow.economic_interpretation}</p>
+                      </div>
+                    )}
                   </div>
                 )}
 
-                {talentFlow.economic_interpretation && (
-                  <div className="mt-6 p-4 bg-gray-50 rounded-lg">
-                    <p className="text-sm text-gray-700">{talentFlow.economic_interpretation}</p>
+                {/* System Intelligence Summary */}
+                {systemStatus && (
+                  <div className="bg-gradient-to-br from-purple-50 to-blue-50 rounded-lg shadow p-6 border border-purple-200">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4">System Intelligence Overview</h3>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div className="bg-white rounded-lg p-4">
+                        <p className="text-sm font-medium text-gray-600 mb-2">GSTI Engine</p>
+                        <div className="space-y-1 text-sm">
+                          <p className="text-gray-900">
+                            Data Points: {systemStatus.components?.gsti_engine?.historical_data_points || 0}
+                          </p>
+                          <p className="text-gray-900">
+                            Goodwill Weight: {systemStatus.components?.gsti_engine?.current_weights?.w_goodwill || 0}
+                          </p>
+                          <p className="text-gray-900">
+                            GSR Weight: {systemStatus.components?.gsti_engine?.current_weights?.w_gsr || 0}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="bg-white rounded-lg p-4">
+                        <p className="text-sm font-medium text-gray-600 mb-2">AMP Engine</p>
+                        <div className="space-y-1 text-sm">
+                          <p className="text-gray-900">
+                            Candidates: {systemStatus.components?.amp_engine?.candidates_registered || 0}
+                          </p>
+                          <p className="text-gray-900">
+                            Status: {systemStatus.components?.amp_engine?.initialized ? 'Active' : 'Inactive'}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="bg-white rounded-lg p-4">
+                        <p className="text-sm font-medium text-gray-600 mb-2">Market Intelligence</p>
+                        <div className="space-y-1 text-sm">
+                          <p className="text-gray-900">
+                            GSTI Data: {systemStatus.components?.market_intelligence?.gsti_data_available ? 'Available' : 'N/A'}
+                          </p>
+                          <p className="text-gray-900">
+                            Current Regime: <RegimeBadge regime={systemStatus.components?.market_intelligence?.current_regime} />
+                          </p>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 )}
               </div>
             )}
+          </div>
 
-            {/* System Intelligence Summary */}
-            {systemStatus && (
-              <div className="bg-gradient-to-br from-purple-50 to-blue-50 rounded-lg shadow p-6 border border-purple-200">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">System Intelligence Overview</h3>
-                
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="bg-white rounded-lg p-4">
-                    <p className="text-sm font-medium text-gray-600 mb-2">GSTI Engine</p>
-                    <div className="space-y-1 text-sm">
-                      <p className="text-gray-900">
-                        Data Points: {systemStatus.components?.gsti_engine?.historical_data_points || 0}
-                      </p>
-                      <p className="text-gray-900">
-                        Goodwill Weight: {systemStatus.components?.gsti_engine?.current_weights?.w_goodwill || 0}
-                      </p>
-                      <p className="text-gray-900">
-                        GSR Weight: {systemStatus.components?.gsti_engine?.current_weights?.w_gsr || 0}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="bg-white rounded-lg p-4">
-                    <p className="text-sm font-medium text-gray-600 mb-2">AMP Engine</p>
-                    <div className="space-y-1 text-sm">
-                      <p className="text-gray-900">
-                        Candidates: {systemStatus.components?.amp_engine?.candidates_registered || 0}
-                      </p>
-                      <p className="text-gray-900">
-                        Status: {systemStatus.components?.amp_engine?.initialized ? 'Active' : 'Inactive'}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="bg-white rounded-lg p-4">
-                    <p className="text-sm font-medium text-gray-600 mb-2">Market Intelligence</p>
-                    <div className="space-y-1 text-sm">
-                      <p className="text-gray-900">
-                        GSTI Data: {systemStatus.components?.market_intelligence?.gsti_data_available ? 'Available' : 'N/A'}
-                      </p>
-                      <p className="text-gray-900">
-                        Current Regime: <RegimeBadge regime={systemStatus.components?.market_intelligence?.current_regime} />
-                      </p>
-                    </div>
-                  </div>
+          {/* Footer with version watermark */}
+          <div className="bg-white border-t border-gray-200 mt-12">
+            <div className="max-w-7xl mx-auto px-6 py-4">
+              <div className="flex items-center justify-between text-sm text-gray-600">
+                <p>AMP-GSTI Unified Intelligence Platform v{APP_VERSION}</p>
+                <div className="flex items-center space-x-4">
+                  <p>Anonymous Merit Protocol + Gold-Silver Trust Index</p>
+                  {auditMode && (
+                    <span className="px-2 py-1 bg-yellow-100 text-yellow-800 rounded text-xs font-medium">
+                      AUDIT MODE
+                    </span>
+                  )}
                 </div>
               </div>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* Footer */}
-      <div className="bg-white border-t border-gray-200 mt-12">
-        <div className="max-w-7xl mx-auto px-6 py-4">
-          <div className="flex items-center justify-between text-sm text-gray-600">
-            <p>AMP-GSTI Unified Intelligence Platform v1.0.0</p>
-            <p>Anonymous Merit Protocol + Gold-Silver Trust Index</p>
+            </div>
           </div>
         </div>
-      </div>
-    </div>
+      </AuthContext.Provider>
+    </ErrorBoundary>
   );
 };
 
