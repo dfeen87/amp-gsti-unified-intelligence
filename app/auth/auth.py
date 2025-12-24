@@ -7,9 +7,10 @@ import secrets
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from fastapi import HTTPException, Header
+from sqlalchemy.exc import SQLAlchemyError
 
-from config import settings
-from database import get_db, User
+from app.config import settings
+from app.database import get_db, User
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -32,12 +33,13 @@ class AuthManager:
     v2-hardened Auth Manager
     """
 
-    def __init__(self):
+    def __init__(self, db=None):
         self.secret_key = settings.SECRET_KEY
         self.algorithm = settings.ALGORITHM
         self.access_token_expire = settings.ACCESS_TOKEN_EXPIRE_MINUTES
         self.issuer = settings.JWT_ISSUER
         self.audience = settings.JWT_AUDIENCE
+        self._db = db
 
     # -----------------------------
     # Passwords
@@ -83,7 +85,7 @@ class AuthManager:
     # Authentication
     # -----------------------------
     def authenticate(self, username: str, password: str) -> str:
-        db = get_db()
+        db = self._db or get_db()
         session = db.get_session()
         try:
             user = session.query(User).filter(User.username == username).first()
@@ -101,6 +103,46 @@ class AuthManager:
 
             db.log_activity(user.id, "login_success", {})
             return token
+        finally:
+            session.close()
+
+    def register_user(
+        self,
+        *,
+        username: str,
+        email: str,
+        password: str,
+        organization: str,
+    ) -> User:
+        db = self._db or get_db()
+        session = db.get_session()
+        try:
+            existing = (
+                session.query(User)
+                .filter((User.username == username) | (User.email == email))
+                .first()
+            )
+            if existing:
+                raise HTTPException(status_code=400, detail="User already exists")
+
+            api_key = secrets.token_hex(32)
+            user = User(
+                username=username,
+                email=email,
+                hashed_password=self.hash_password(password),
+                organization=organization,
+                api_key=api_key,
+                is_admin=False,
+                is_active=True,
+                token_version=0,
+            )
+            session.add(user)
+            session.commit()
+            session.refresh(user)
+            return user
+        except SQLAlchemyError:
+            session.rollback()
+            raise
         finally:
             session.close()
 

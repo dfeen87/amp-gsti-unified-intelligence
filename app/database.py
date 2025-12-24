@@ -19,7 +19,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import declarative_base, sessionmaker, Session
 from sqlalchemy.exc import SQLAlchemyError
 
-from config import settings
+from app.config import settings
 
 Base = declarative_base()
 
@@ -420,7 +420,7 @@ class Database:
 def get_db() -> Database:
     """
     Keep your existing import pattern:
-        from database import get_db
+        from app.database import get_db
         db = get_db()
     but without a global engine/session anti-pattern.
     """
