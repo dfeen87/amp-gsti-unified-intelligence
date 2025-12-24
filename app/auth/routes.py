@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field, EmailStr, constr
 
 from app.auth.auth import AuthManager, get_current_user
-from database import get_db, User  # your database.py exports these
+from app.database import get_db, User  # your database.py exports these
 
 
 router = APIRouter(prefix="/auth", tags=["auth"])
