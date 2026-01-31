@@ -7,7 +7,7 @@ import secrets
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from fastapi import HTTPException, Header
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from app.config import settings
 from app.database import get_db, User
@@ -140,6 +140,9 @@ class AuthManager:
             session.commit()
             session.refresh(user)
             return user
+        except IntegrityError:
+            session.rollback()
+            raise HTTPException(status_code=400, detail="User already exists")
         except SQLAlchemyError:
             session.rollback()
             raise
