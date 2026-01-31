@@ -123,9 +123,6 @@ def register(payload: RegisterRequest, request: Request):
     except HTTPException:
         # propagate explicit HTTP errors from AuthManager
         raise
-    except Exception:
-        # Normalize to a safe response shape
-        raise HTTPException(status_code=400, detail="User already exists")
 
     role = _role_from_user(user)
 
