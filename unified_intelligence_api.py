@@ -207,29 +207,54 @@ class AMPMatchingEngine:
     
     def __init__(self, gsti_engine: GSTIEngine):
         self.gsti_engine = gsti_engine
+
+    def _build_token_profile(self, candidate: Candidate) -> Dict[str, Any]:
+        skills = set()
+        character = set()
+        loyalty = set()
+        lower_names = []
+
+        for token in candidate.tokens:
+            name = token.name
+            lower_name = name.lower()
+            lower_names.append(lower_name)
+
+            if token.type == SBTType.SKILL:
+                skills.add(name)
+            elif token.type == SBTType.CHARACTER:
+                character.add(name)
+            elif token.type == SBTType.LOYALTY:
+                loyalty.add(name)
+
+        return {
+            "skills": skills,
+            "character": character,
+            "loyalty": loyalty,
+            "lower_names": lower_names,
+        }
         
     def calculate_zk_proof_match(
         self, 
         candidate: Candidate, 
-        query: HiringQuery
+        query: HiringQuery,
+        token_profile: Optional[Dict[str, Any]] = None
     ) -> bool:
         """
         Simulate Zero-Knowledge Proof verification
         Returns True if candidate meets ALL criteria without revealing identity
         """
+        profile = token_profile or self._build_token_profile(candidate)
+
         # Check skills
-        candidate_skills = [t.name for t in candidate.tokens if t.type == SBTType.SKILL]
-        if not all(skill in candidate_skills for skill in query.required_skills):
+        if not all(skill in profile["skills"] for skill in query.required_skills):
             return False
         
         # Check character
-        candidate_character = [t.name for t in candidate.tokens if t.type == SBTType.CHARACTER]
-        if not all(trait in candidate_character for trait in query.required_character):
+        if not all(trait in profile["character"] for trait in query.required_character):
             return False
         
         # Check loyalty
-        candidate_loyalty = [t.name for t in candidate.tokens if t.type == SBTType.LOYALTY]
-        if not all(loyalty in candidate_loyalty for loyalty in query.required_loyalty):
+        if not all(loyalty in profile["loyalty"] for loyalty in query.required_loyalty):
             return False
         
         return True
@@ -238,19 +263,23 @@ class AMPMatchingEngine:
         self,
         base_score: float,
         candidate: Candidate,
-        market_regime: MarketRegime
+        market_regime: MarketRegime,
+        token_profile: Optional[Dict[str, Any]] = None
     ) -> float:
         """
         Adjust candidate predictive score based on current market regime
         """
         score = base_score
+
+        profile = token_profile or self._build_token_profile(candidate)
+        lower_names = profile["lower_names"]
         
         # Get candidate's token profile
-        has_loyalty = any(t.type == SBTType.LOYALTY for t in candidate.tokens)
-        has_innovation = any("innovation" in t.name.lower() for t in candidate.tokens)
+        has_loyalty = bool(profile["loyalty"])
+        has_innovation = any("innovation" in name for name in lower_names)
         has_stability = any(
-            "loyalty" in t.name.lower() or "mentor" in t.name.lower() 
-            for t in candidate.tokens
+            "loyalty" in name or "mentor" in name
+            for name in lower_names
         )
         
         # Regime-based adjustments
@@ -287,8 +316,9 @@ class AMPMatchingEngine:
         matches = []
         
         for candidate in candidates:
+            token_profile = self._build_token_profile(candidate)
             # Step 1: ZK-Proof verification (binary pass/fail)
-            if not self.calculate_zk_proof_match(candidate, query):
+            if not self.calculate_zk_proof_match(candidate, query, token_profile):
                 continue
             
             # Step 2: Base score check
@@ -304,7 +334,8 @@ class AMPMatchingEngine:
                 adjusted_score = self.calculate_regime_adjusted_score(
                     candidate.base_predictive_score,
                     candidate,
-                    regime
+                    regime,
+                    token_profile
                 )
                 regime_adjustment = adjusted_score - candidate.base_predictive_score
                 final_score = adjusted_score
