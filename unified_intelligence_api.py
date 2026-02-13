@@ -49,14 +49,14 @@ Version: 1.0.0
 Status: Initial Public Release
 """
 
+from collections import defaultdict
+from datetime import datetime
+from enum import Enum
+from typing import Any, Dict, List, Optional
+
+import numpy as np
 from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel, Field
-from typing import List, Optional, Dict, Any
-from enum import Enum
-from datetime import datetime
-import numpy as np
-from collections import defaultdict
-import json
 
 # ============================================================================
 # CORE DATA MODELS
@@ -415,8 +415,8 @@ def health_check():
 
 @app.post("/market/gsti/update")
 def update_gsti(
-    gold_price: float = Query(..., description="Current gold price (USD/oz)"),
-    silver_price: float = Query(..., description="Current silver price (USD/oz)"),
+    gold_price: float = Query(..., description="Current gold price (USD/oz)", gt=0),
+    silver_price: float = Query(..., description="Current silver price (USD/oz)", gt=0),
     CR: float = Query(0.85, description="Customer Retention"),
     ES: float = Query(0.75, description="Employee Satisfaction"),
     BT: float = Query(0.80, description="Brand Trust"),

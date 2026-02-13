@@ -13,13 +13,22 @@ Usage:
     python populate_data.py --populate-candidates 50
 """
 
-import requests
-import time
-import random
 import argparse
+import logging
+import random
+import secrets
+import time
 from datetime import datetime, timedelta
-from typing import List, Dict
-import json
+from typing import Dict, List
+
+import requests
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 # ============================================================================
 # CONFIGURATION
@@ -109,14 +118,21 @@ class MarketDataFetcher:
             response = self.session.get(GOLD_SILVER_API, timeout=5)
             if response.status_code == 200:
                 data = response.json()
+                gold_price = float(data.get('gold', 2500))
+                silver_price = float(data.get('silver', 25))
+                
+                # Validate prices are positive
+                if gold_price <= 0 or silver_price <= 0:
+                    raise ValueError(f"Invalid prices: gold={gold_price}, silver={silver_price}")
+                
                 return {
-                    'gold_price': float(data.get('gold', 2500)),
-                    'silver_price': float(data.get('silver', 25)),
+                    'gold_price': gold_price,
+                    'silver_price': silver_price,
                     'source': 'metals.live',
                     'timestamp': datetime.utcnow().isoformat()
                 }
         except Exception as e:
-            print(f"Failed to fetch from metals.live: {e}")
+            logger.warning(f"Failed to fetch from metals.live: {e}")
         
         # Fallback: Generate realistic prices with slight random walk
         base_gold = 2450 + random.uniform(-100, 100)
@@ -141,7 +157,7 @@ class MarketDataFetcher:
                 vix = data['chart']['result'][0]['meta']['regularMarketPrice']
                 return float(vix)
         except Exception as e:
-            print(f"Failed to fetch VIX: {e}")
+            logger.warning(f"Failed to fetch VIX: {e}")
         
         # Fallback: Simulate VIX between 15-35 with realistic distribution
         return round(random.gauss(20, 5), 2)
@@ -184,8 +200,12 @@ class CandidateGenerator:
     
     @staticmethod
     def generate_wallet_address() -> str:
-        """Generate a realistic-looking Ethereum wallet address"""
-        return "0x" + ''.join(random.choices('0123456789abcdef', k=40))
+        """
+        Generate a realistic-looking Ethereum wallet address.
+        Note: This generates a mock address for testing/simulation only.
+        Not a valid checksummed Ethereum address (EIP-55).
+        """
+        return "0x" + secrets.token_hex(20)
     
     @staticmethod
     def generate_tokens(num_tokens: int = None) -> List[Dict]:
@@ -214,7 +234,7 @@ class CandidateGenerator:
                     'name': name,
                     'issuer': random.choice(ISSUERS),
                     'issue_date': (datetime.now() - timedelta(days=random.randint(30, 1825))).strftime('%Y-%m'),
-                    'verification_hash': '0x' + ''.join(random.choices('0123456789abcdef', k=64))
+                    'verification_hash': '0x' + secrets.token_hex(32)
                 })
         
         return tokens[:num_tokens]
@@ -264,10 +284,10 @@ class AMPGSTIClient:
                 params=params
             )
             response.raise_for_status()
-            print(f"✓ Market data updated: GSR={market_data['gold_price']/market_data['silver_price']:.2f}, VIX={vix}")
+            logger.info(f"Market data updated: GSR={market_data['gold_price']/market_data['silver_price']:.2f}, VIX={vix}")
             return response.json()
         except Exception as e:
-            print(f"✗ Failed to update market data: {e}")
+            logger.error(f"Failed to update market data: {e}")
             return None
     
     def register_candidate(self, candidate: Dict):
@@ -279,10 +299,18 @@ class AMPGSTIClient:
             )
             response.raise_for_status()
             return response.json()
-        except requests.exceptions.HTTPException as e:
-            if "already registered" in str(e):
-                return None  # Skip duplicates
-            print(f"✗ Failed to register candidate: {e}")
+        except requests.exceptions.HTTPError as e:
+            # Check if it's a duplicate registration (409 Conflict) or contains "already registered" message
+            if e.response is not None:
+                # First check status code, then check response body if needed
+                if e.response.status_code == 409:
+                    logger.debug("Candidate already registered (409 Conflict), skipping")
+                    return None  # Skip duplicates
+                # For other error codes, check if response contains duplicate message
+                if e.response.text and "already registered" in e.response.text.lower():
+                    logger.debug("Candidate already registered (response text), skipping")
+                    return None
+            logger.error(f"Failed to register candidate: {e}")
             return None
     
     def get_system_status(self):
@@ -292,7 +320,7 @@ class AMPGSTIClient:
             response.raise_for_status()
             return response.json()
         except Exception as e:
-            print(f"✗ Failed to get system status: {e}")
+            logger.error(f"Failed to get system status: {e}")
             return None
     
     def reset_system(self):
@@ -303,10 +331,10 @@ class AMPGSTIClient:
                 params={'confirm': True}
             )
             response.raise_for_status()
-            print("✓ System reset")
+            logger.info("System reset successful")
             return response.json()
         except Exception as e:
-            print(f"✗ Failed to reset system: {e}")
+            logger.error(f"Failed to reset system: {e}")
             return None
 
 # ============================================================================
@@ -316,10 +344,11 @@ class AMPGSTIClient:
 class DataPopulator:
     """Main data population orchestrator"""
     
-    def __init__(self):
+    def __init__(self, api_base: str = None):
         self.fetcher = MarketDataFetcher()
         self.generator = CandidateGenerator()
-        self.client = AMPGSTIClient()
+        # Use provided api_base or default to module-level API_BASE
+        self.client = AMPGSTIClient(api_base if api_base is not None else API_BASE)
     
     def populate_candidates(self, count: int = 50):
         """Populate database with candidates"""
@@ -346,7 +375,7 @@ class DataPopulator:
     def update_market_once(self):
         """Update market data once"""
         print(f"\n{'='*60}")
-        print(f"UPDATING MARKET DATA")
+        print("UPDATING MARKET DATA")
         print(f"{'='*60}\n")
         
         # Fetch real data
@@ -374,7 +403,7 @@ class DataPopulator:
     def run_continuous(self, interval: int = 300):
         """Continuously update market data"""
         print(f"\n{'='*60}")
-        print(f"CONTINUOUS MARKET UPDATE MODE")
+        print("CONTINUOUS MARKET UPDATE MODE")
         print(f"Updating every {interval} seconds (Ctrl+C to stop)")
         print(f"{'='*60}\n")
         
@@ -395,26 +424,26 @@ class DataPopulator:
         
         if status:
             print(f"\n{'='*60}")
-            print(f"SYSTEM STATUS")
+            print("SYSTEM STATUS")
             print(f"{'='*60}\n")
             
             components = status.get('components', {})
             
             # GSTI Engine
             gsti = components.get('gsti_engine', {})
-            print(f"GSTI Engine:")
+            print("GSTI Engine:")
             print(f"  - Historical data points: {gsti.get('historical_data_points', 0)}")
             print(f"  - Goodwill weight: {gsti.get('current_weights', {}).get('w_goodwill', 0)}")
             print(f"  - GSR weight: {gsti.get('current_weights', {}).get('w_gsr', 0)}")
             
             # AMP Engine
             amp = components.get('amp_engine', {})
-            print(f"\nAMP Engine:")
+            print("\nAMP Engine:")
             print(f"  - Candidates registered: {amp.get('candidates_registered', 0)}")
             
             # Market Intelligence
             market = components.get('market_intelligence', {})
-            print(f"\nMarket Intelligence:")
+            print("\nMarket Intelligence:")
             print(f"  - GSTI data available: {market.get('gsti_data_available', False)}")
             print(f"  - Current regime: {market.get('current_regime', 'unknown').upper()}")
             
@@ -479,17 +508,16 @@ Examples:
     
     parser.add_argument(
         '--api-base',
-        default=API_BASE,
-        help=f'API base URL (default: {API_BASE})'
+        default='http://localhost:8000',
+        help='API base URL (default: http://localhost:8000)'
     )
     
     args = parser.parse_args()
     
     # Update API base if provided
-    global API_BASE
-    API_BASE = args.api_base
+    api_base = args.api_base
     
-    populator = DataPopulator()
+    populator = DataPopulator(api_base=api_base)
     
     # Status check
     if args.status:
