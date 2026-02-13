@@ -13,15 +13,15 @@ Usage:
     python populate_data.py --populate-candidates 50
 """
 
-import requests
-import time
-import random
-import secrets
 import argparse
 import logging
+import random
+import secrets
+import time
 from datetime import datetime, timedelta
-from typing import List, Dict
-import json
+from typing import Dict, List
+
+import requests
 
 # Configure logging
 logging.basicConfig(
@@ -297,7 +297,7 @@ class AMPGSTIClient:
             return response.json()
         except requests.exceptions.HTTPError as e:
             if "already registered" in str(e):
-                logger.debug(f"Candidate already registered, skipping")
+                logger.debug("Candidate already registered, skipping")
                 return None  # Skip duplicates
             logger.error(f"Failed to register candidate: {e}")
             return None
@@ -363,7 +363,7 @@ class DataPopulator:
     def update_market_once(self):
         """Update market data once"""
         print(f"\n{'='*60}")
-        print(f"UPDATING MARKET DATA")
+        print("UPDATING MARKET DATA")
         print(f"{'='*60}\n")
         
         # Fetch real data
@@ -391,7 +391,7 @@ class DataPopulator:
     def run_continuous(self, interval: int = 300):
         """Continuously update market data"""
         print(f"\n{'='*60}")
-        print(f"CONTINUOUS MARKET UPDATE MODE")
+        print("CONTINUOUS MARKET UPDATE MODE")
         print(f"Updating every {interval} seconds (Ctrl+C to stop)")
         print(f"{'='*60}\n")
         
@@ -412,26 +412,26 @@ class DataPopulator:
         
         if status:
             print(f"\n{'='*60}")
-            print(f"SYSTEM STATUS")
+            print("SYSTEM STATUS")
             print(f"{'='*60}\n")
             
             components = status.get('components', {})
             
             # GSTI Engine
             gsti = components.get('gsti_engine', {})
-            print(f"GSTI Engine:")
+            print("GSTI Engine:")
             print(f"  - Historical data points: {gsti.get('historical_data_points', 0)}")
             print(f"  - Goodwill weight: {gsti.get('current_weights', {}).get('w_goodwill', 0)}")
             print(f"  - GSR weight: {gsti.get('current_weights', {}).get('w_gsr', 0)}")
             
             # AMP Engine
             amp = components.get('amp_engine', {})
-            print(f"\nAMP Engine:")
+            print("\nAMP Engine:")
             print(f"  - Candidates registered: {amp.get('candidates_registered', 0)}")
             
             # Market Intelligence
             market = components.get('market_intelligence', {})
-            print(f"\nMarket Intelligence:")
+            print("\nMarket Intelligence:")
             print(f"  - GSTI data available: {market.get('gsti_data_available', False)}")
             print(f"  - Current regime: {market.get('current_regime', 'unknown').upper()}")
             
