@@ -200,7 +200,11 @@ class CandidateGenerator:
     
     @staticmethod
     def generate_wallet_address() -> str:
-        """Generate a realistic-looking Ethereum wallet address"""
+        """
+        Generate a realistic-looking Ethereum wallet address.
+        Note: This generates a mock address for testing/simulation only.
+        Not a valid checksummed Ethereum address (EIP-55).
+        """
         return "0x" + secrets.token_hex(20)
     
     @staticmethod
@@ -298,9 +302,14 @@ class AMPGSTIClient:
         except requests.exceptions.HTTPError as e:
             # Check if it's a duplicate registration (409 Conflict) or contains "already registered" message
             if e.response is not None:
-                if e.response.status_code == 409 or "already registered" in e.response.text.lower():
-                    logger.debug("Candidate already registered, skipping")
+                # First check status code, then check response body if needed
+                if e.response.status_code == 409:
+                    logger.debug("Candidate already registered (409 Conflict), skipping")
                     return None  # Skip duplicates
+                # For other error codes, check if response contains duplicate message
+                if e.response.text and "already registered" in e.response.text.lower():
+                    logger.debug("Candidate already registered (response text), skipping")
+                    return None
             logger.error(f"Failed to register candidate: {e}")
             return None
     
@@ -335,10 +344,11 @@ class AMPGSTIClient:
 class DataPopulator:
     """Main data population orchestrator"""
     
-    def __init__(self, api_base: str = API_BASE):
+    def __init__(self, api_base: str = None):
         self.fetcher = MarketDataFetcher()
         self.generator = CandidateGenerator()
-        self.client = AMPGSTIClient(api_base)
+        # Use provided api_base or default to module-level API_BASE
+        self.client = AMPGSTIClient(api_base if api_base is not None else API_BASE)
     
     def populate_candidates(self, count: int = 50):
         """Populate database with candidates"""
