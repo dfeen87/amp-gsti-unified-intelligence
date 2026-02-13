@@ -296,14 +296,11 @@ class AMPGSTIClient:
             response.raise_for_status()
             return response.json()
         except requests.exceptions.HTTPError as e:
-            # Check if it's a duplicate registration (409 Conflict)
-            if e.response is not None and e.response.status_code == 409:
-                logger.debug("Candidate already registered, skipping")
-                return None  # Skip duplicates
-            # Check response body for "already registered" message
-            if e.response is not None and "already registered" in e.response.text.lower():
-                logger.debug("Candidate already registered, skipping")
-                return None
+            # Check if it's a duplicate registration (409 Conflict) or contains "already registered" message
+            if e.response is not None:
+                if e.response.status_code == 409 or "already registered" in e.response.text.lower():
+                    logger.debug("Candidate already registered, skipping")
+                    return None  # Skip duplicates
             logger.error(f"Failed to register candidate: {e}")
             return None
     
