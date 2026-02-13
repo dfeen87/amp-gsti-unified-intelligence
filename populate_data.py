@@ -18,9 +18,17 @@ import time
 import random
 import secrets
 import argparse
+import logging
 from datetime import datetime, timedelta
 from typing import List, Dict
 import json
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 # ============================================================================
 # CONFIGURATION
@@ -124,7 +132,7 @@ class MarketDataFetcher:
                     'timestamp': datetime.utcnow().isoformat()
                 }
         except Exception as e:
-            print(f"Failed to fetch from metals.live: {e}")
+            logger.warning(f"Failed to fetch from metals.live: {e}")
         
         # Fallback: Generate realistic prices with slight random walk
         base_gold = 2450 + random.uniform(-100, 100)
@@ -149,7 +157,7 @@ class MarketDataFetcher:
                 vix = data['chart']['result'][0]['meta']['regularMarketPrice']
                 return float(vix)
         except Exception as e:
-            print(f"Failed to fetch VIX: {e}")
+            logger.warning(f"Failed to fetch VIX: {e}")
         
         # Fallback: Simulate VIX between 15-35 with realistic distribution
         return round(random.gauss(20, 5), 2)
@@ -272,10 +280,10 @@ class AMPGSTIClient:
                 params=params
             )
             response.raise_for_status()
-            print(f"✓ Market data updated: GSR={market_data['gold_price']/market_data['silver_price']:.2f}, VIX={vix}")
+            logger.info(f"Market data updated: GSR={market_data['gold_price']/market_data['silver_price']:.2f}, VIX={vix}")
             return response.json()
         except Exception as e:
-            print(f"✗ Failed to update market data: {e}")
+            logger.error(f"Failed to update market data: {e}")
             return None
     
     def register_candidate(self, candidate: Dict):
@@ -289,8 +297,9 @@ class AMPGSTIClient:
             return response.json()
         except requests.exceptions.HTTPError as e:
             if "already registered" in str(e):
+                logger.debug(f"Candidate already registered, skipping")
                 return None  # Skip duplicates
-            print(f"✗ Failed to register candidate: {e}")
+            logger.error(f"Failed to register candidate: {e}")
             return None
     
     def get_system_status(self):
@@ -300,7 +309,7 @@ class AMPGSTIClient:
             response.raise_for_status()
             return response.json()
         except Exception as e:
-            print(f"✗ Failed to get system status: {e}")
+            logger.error(f"Failed to get system status: {e}")
             return None
     
     def reset_system(self):
@@ -311,10 +320,10 @@ class AMPGSTIClient:
                 params={'confirm': True}
             )
             response.raise_for_status()
-            print("✓ System reset")
+            logger.info("System reset successful")
             return response.json()
         except Exception as e:
-            print(f"✗ Failed to reset system: {e}")
+            logger.error(f"Failed to reset system: {e}")
             return None
 
 # ============================================================================
@@ -324,10 +333,10 @@ class AMPGSTIClient:
 class DataPopulator:
     """Main data population orchestrator"""
     
-    def __init__(self):
+    def __init__(self, api_base: str = API_BASE):
         self.fetcher = MarketDataFetcher()
         self.generator = CandidateGenerator()
-        self.client = AMPGSTIClient()
+        self.client = AMPGSTIClient(api_base)
     
     def populate_candidates(self, count: int = 50):
         """Populate database with candidates"""
@@ -487,17 +496,16 @@ Examples:
     
     parser.add_argument(
         '--api-base',
-        default=API_BASE,
-        help=f'API base URL (default: {API_BASE})'
+        default='http://localhost:8000',
+        help='API base URL (default: http://localhost:8000)'
     )
     
     args = parser.parse_args()
     
     # Update API base if provided
-    global API_BASE
-    API_BASE = args.api_base
+    api_base = args.api_base
     
-    populator = DataPopulator()
+    populator = DataPopulator(api_base=api_base)
     
     # Status check
     if args.status:
