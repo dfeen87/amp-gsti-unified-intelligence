@@ -415,8 +415,8 @@ def health_check():
 
 @app.post("/market/gsti/update")
 def update_gsti(
-    gold_price: float = Query(..., description="Current gold price (USD/oz)"),
-    silver_price: float = Query(..., description="Current silver price (USD/oz)"),
+    gold_price: float = Query(..., description="Current gold price (USD/oz)", gt=0),
+    silver_price: float = Query(..., description="Current silver price (USD/oz)", gt=0),
     CR: float = Query(0.85, description="Customer Retention"),
     ES: float = Query(0.75, description="Employee Satisfaction"),
     BT: float = Query(0.80, description="Brand Trust"),

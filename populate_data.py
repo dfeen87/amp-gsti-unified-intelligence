@@ -16,6 +16,7 @@ Usage:
 import requests
 import time
 import random
+import secrets
 import argparse
 from datetime import datetime, timedelta
 from typing import List, Dict
@@ -109,9 +110,16 @@ class MarketDataFetcher:
             response = self.session.get(GOLD_SILVER_API, timeout=5)
             if response.status_code == 200:
                 data = response.json()
+                gold_price = float(data.get('gold', 2500))
+                silver_price = float(data.get('silver', 25))
+                
+                # Validate prices are positive
+                if gold_price <= 0 or silver_price <= 0:
+                    raise ValueError(f"Invalid prices: gold={gold_price}, silver={silver_price}")
+                
                 return {
-                    'gold_price': float(data.get('gold', 2500)),
-                    'silver_price': float(data.get('silver', 25)),
+                    'gold_price': gold_price,
+                    'silver_price': silver_price,
                     'source': 'metals.live',
                     'timestamp': datetime.utcnow().isoformat()
                 }
@@ -185,7 +193,7 @@ class CandidateGenerator:
     @staticmethod
     def generate_wallet_address() -> str:
         """Generate a realistic-looking Ethereum wallet address"""
-        return "0x" + ''.join(random.choices('0123456789abcdef', k=40))
+        return "0x" + secrets.token_hex(20)
     
     @staticmethod
     def generate_tokens(num_tokens: int = None) -> List[Dict]:
@@ -214,7 +222,7 @@ class CandidateGenerator:
                     'name': name,
                     'issuer': random.choice(ISSUERS),
                     'issue_date': (datetime.now() - timedelta(days=random.randint(30, 1825))).strftime('%Y-%m'),
-                    'verification_hash': '0x' + ''.join(random.choices('0123456789abcdef', k=64))
+                    'verification_hash': '0x' + secrets.token_hex(32)
                 })
         
         return tokens[:num_tokens]
@@ -279,7 +287,7 @@ class AMPGSTIClient:
             )
             response.raise_for_status()
             return response.json()
-        except requests.exceptions.HTTPException as e:
+        except requests.exceptions.HTTPError as e:
             if "already registered" in str(e):
                 return None  # Skip duplicates
             print(f"✗ Failed to register candidate: {e}")
