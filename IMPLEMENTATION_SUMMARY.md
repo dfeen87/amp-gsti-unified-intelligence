@@ -81,7 +81,7 @@ Files implemented:
 - ✅ `QUICKSTART.md` - Deployment instructions
 - ✅ `README.md` - Module overview
 - ✅ `SECURITY.md` - Security documentation
-- ✅ `test_integration.py` - Integration test suite
+- ✅ `run_integration.py` - Integration test suite
 
 ### Safety Requirements
 
@@ -112,7 +112,7 @@ Files implemented:
 3. `observability_node/metrics.py` (6,273 bytes)
 4. `observability_node/state_extractors.py` (10,895 bytes)
 5. `observability_node/run.py` (1,137 bytes)
-6. `observability_node/test_integration.py` (3,665 bytes)
+6. `observability_node/run_integration.py` (3,665 bytes)
 7. `requirements.txt` (updated with psutil)
 8. `Dockerfile.observability` (1,542 bytes)
 9. `docker-compose.observability.yml` (2,203 bytes)
@@ -127,7 +127,7 @@ Files implemented:
 ## 🧪 Testing Results
 
 ### Integration Tests
-**Test Suite:** `observability_node/test_integration.py`
+**Test Suite:** `observability_node/run_integration.py`
 **Result:** ✅ 12/12 tests passed
 
 Tests performed:

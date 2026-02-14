@@ -16,7 +16,7 @@ All HTTP methods except GET, HEAD, and OPTIONS are **automatically rejected** at
 - PATCH → HTTP 405 (Method Not Allowed)
 - DELETE → HTTP 405 (Method Not Allowed)
 
-**Verification:** ✓ Tested via integration tests (observability_node/test_integration.py)
+**Verification:** ✓ Tested via integration tests (observability_node/run_integration.py)
 
 ### 2. No State Modifications
 
@@ -124,7 +124,7 @@ No security vulnerabilities detected by CodeQL static analysis.
 
 ## Integration Testing
 
-**Test Suite:** `observability_node/test_integration.py`
+**Test Suite:** `observability_node/run_integration.py`
 
 **Tests:**
 - ✓ All GET endpoints return expected status codes
