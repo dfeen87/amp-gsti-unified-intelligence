@@ -1,0 +1,89 @@
+# Docker Compose for AMP-GSTI with Global Observability Node
+# =============================================================
+#
+# This compose file sets up:
+# - PostgreSQL database
+# - Redis cache
+# - Main AMP-GSTI API (port 8000)
+# - Global Observability Node (port 8081)
+#
+# Usage:
+#   docker-compose -f docker-compose.observability.yml up -d
+
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  db:
+    image: postgres:13-alpine
+    container_name: amp-gsti-db
+    environment:
+      POSTGRES_USER: amp_gsti_user
+      POSTGRES_PASSWORD: change_this_password
+      POSTGRES_DB: amp_gsti_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U amp_gsti_user"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: amp-gsti-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # Main AMP-GSTI API
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: amp-gsti-api
+    environment:
+      DATABASE_URL: postgresql://amp_gsti_user:change_this_password@db:5432/amp_gsti_db
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: your-super-secret-key-change-this-in-production-must-be-32-chars-or-more
+      ENVIRONMENT: development
+      DEBUG: "False"
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Global Observability Node
+  observability:
+    build:
+      context: .
+      dockerfile: Dockerfile.observability
+    container_name: amp-gsti-observability
+    environment:
+      DATABASE_URL: postgresql://amp_gsti_user:change_this_password@db:5432/amp_gsti_db
+      REDIS_URL: redis://redis:6379/0
+      OBS_NODE_PORT: 8081
+      OBS_NODE_HOST: 0.0.0.0
+      ENVIRONMENT: development
+    ports:
+      - "8081:8081"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

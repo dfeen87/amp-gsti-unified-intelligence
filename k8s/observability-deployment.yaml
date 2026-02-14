@@ -1,0 +1,160 @@
+# Kubernetes Deployment for Global Observability Node
+# =====================================================
+#
+# This file defines the Kubernetes resources for deploying the
+# AMP-GSTI Global Observability Node in a production cluster.
+#
+# Apply:
+#   kubectl apply -f k8s/observability-deployment.yaml
+#
+# Verify:
+#   kubectl get pods -l app=amp-gsti-observability
+#   kubectl get services amp-gsti-observability
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: amp-gsti-observability-config
+  labels:
+    app: amp-gsti-observability
+data:
+  OBS_NODE_PORT: "8081"
+  OBS_NODE_HOST: "0.0.0.0"
+  ENVIRONMENT: "production"
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: amp-gsti-observability
+  labels:
+    app: amp-gsti-observability
+    component: monitoring
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: amp-gsti-observability
+  template:
+    metadata:
+      labels:
+        app: amp-gsti-observability
+        component: monitoring
+    spec:
+      containers:
+      - name: observability
+        image: amp-gsti-obs:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - name: http
+          containerPort: 8081
+          protocol: TCP
+        env:
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: amp-gsti-secrets
+              key: database-url
+        - name: REDIS_URL
+          valueFrom:
+            secretKeyRef:
+              name: amp-gsti-secrets
+              key: redis-url
+              optional: true
+        envFrom:
+        - configMapRef:
+            name: amp-gsti-observability-config
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "200m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        securityContext:
+          allowPrivilegeEscalation: false
+          runAsNonRoot: true
+          runAsUser: 1000
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: false
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: amp-gsti-observability
+  labels:
+    app: amp-gsti-observability
+spec:
+  type: ClusterIP
+  selector:
+    app: amp-gsti-observability
+  ports:
+  - name: http
+    port: 8081
+    targetPort: http
+    protocol: TCP
+
+---
+# Optional: LoadBalancer service for external access
+apiVersion: v1
+kind: Service
+metadata:
+  name: amp-gsti-observability-external
+  labels:
+    app: amp-gsti-observability
+spec:
+  type: LoadBalancer
+  selector:
+    app: amp-gsti-observability
+  ports:
+  - name: http
+    port: 8081
+    targetPort: http
+    protocol: TCP
+
+---
+# Optional: HorizontalPodAutoscaler
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: amp-gsti-observability-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: amp-gsti-observability
+  minReplicas: 2
+  maxReplicas: 5
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80

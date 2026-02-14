@@ -1,0 +1,56 @@
+# Dockerfile for AMP-GSTI Global Observability Node
+# ==================================================
+# 
+# This Dockerfile creates a standalone container for the observability node.
+# The observability node is a read-only service that exposes system metrics,
+# intelligence engine state, and audit summaries.
+#
+# Build:
+#   docker build -f Dockerfile.observability -t amp-gsti-obs:latest .
+#
+# Run:
+#   docker run -d -p 8081:8081 \
+#     -e DATABASE_URL=postgresql://user:pass@db:5432/amp_gsti \
+#     -e REDIS_URL=redis://redis:6379/0 \
+#     amp-gsti-obs:latest
+
+FROM python:3.10-slim
+
+# Set working directory
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        gcc \
+        postgresql-client \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements and install Python dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy application code
+COPY app/ ./app/
+COPY observability_node/ ./observability_node/
+
+# Create non-root user for security
+RUN useradd -m -u 1000 observer && \
+    chown -R observer:observer /app
+
+# Switch to non-root user
+USER observer
+
+# Expose port
+EXPOSE 8081
+
+# Set environment variables
+ENV OBS_NODE_PORT=8081
+ENV OBS_NODE_HOST=0.0.0.0
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8081/health')"
+
+# Run observability node
+CMD ["python", "-m", "observability_node.run"]

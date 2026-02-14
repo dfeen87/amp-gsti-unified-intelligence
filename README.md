@@ -223,6 +223,99 @@ See `LICENSE` for full terms.
 
 ---
 
+## Global Observability Node
+
+**New in v2.1.0** — AMP-GSTI now includes a standalone **Global Observability Node** for production monitoring and transparency.
+
+### What is the Observability Node?
+
+A read-only FastAPI microservice that exposes:
+- System resource metrics (CPU, memory, disk, load)
+- Database and Redis connectivity status
+- GSTI market intelligence state
+- AMP candidate evaluation metrics (anonymized)
+- Hiring forecast indicators
+- Audit log summaries (no PII)
+
+### Key Features
+
+✅ **Read-Only by Design** — All write operations rejected with HTTP 405  
+✅ **No State Modifications** — Never triggers scoring, matching, or forecasting  
+✅ **Graceful Degradation** — Works even when Redis or optional services are unavailable  
+✅ **Independent Service** — Runs on port 8081 (configurable via `OBS_NODE_PORT`)  
+✅ **Production-Safe** — No secrets, credentials, or PII exposed  
+✅ **No Authentication Required** — Safe because it's read-only  
+
+### Quick Start
+
+```bash
+# Install dependencies (includes psutil)
+pip install -r requirements.txt
+
+# Run observability node (default: localhost:8081)
+python -m observability_node.run
+
+# Or with custom port
+export OBS_NODE_PORT=8082
+python -m observability_node.run
+```
+
+### Available Endpoints
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /health` | Health check with uptime, DB/Redis connectivity |
+| `GET /api/system_state` | CPU, memory, disk, load, DB query rate, Redis hit rate |
+| `GET /api/gsti_state` | Gold-silver ratio, market regime, confidence score |
+| `GET /api/amp_state` | Candidate count, merit score distribution, credential stats |
+| `GET /api/forecast_state` | Hiring outlook, talent flow, macro signals, model confidence |
+| `GET /api/audit_summary` | Recent audit logs (anonymized, no PII) |
+
+### Documentation
+
+📖 **Complete Guide:** [observability_node/QUICKSTART.md](observability_node/QUICKSTART.md)
+
+Includes:
+- Endpoint examples with response formats
+- Docker deployment guide
+- Kubernetes deployment YAML
+- Security model explanation
+- Monitoring and alerting setup
+
+### Example Usage
+
+```bash
+# Check system health
+curl http://localhost:8081/health
+
+# Get GSTI market intelligence
+curl http://localhost:8081/api/gsti_state
+
+# View system resource usage
+curl http://localhost:8081/api/system_state
+
+# Get hiring forecast
+curl http://localhost:8081/api/forecast_state
+```
+
+### Docker Deployment
+
+```bash
+docker build -f Dockerfile.observability -t amp-gsti-obs:latest .
+docker run -d -p 8081:8081 \
+  -e DATABASE_URL=postgresql://user:pass@db:5432/amp_gsti \
+  amp-gsti-obs:latest
+```
+
+### Why a Separate Observability Node?
+
+1. **Separation of Concerns** — Monitoring doesn't interfere with core API
+2. **Security Isolation** — Read-only guarantees prevent accidental mutations
+3. **Independent Scaling** — Observability can scale separately from workload APIs
+4. **Audit Transparency** — Exposes system state without exposing control surfaces
+
+---
+
 ## Author
 
 **Don Michael Feeney Jr**
