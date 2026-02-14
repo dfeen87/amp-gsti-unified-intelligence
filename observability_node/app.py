@@ -14,7 +14,7 @@ SECURITY NOTES:
 """
 
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import FastAPI, HTTPException, Request, status
@@ -187,7 +187,7 @@ def health_check():
             "redis": redis_status
         },
         "environment": environment,
-        "timestamp": datetime.utcnow().isoformat()
+        "timestamp": datetime.now(timezone.utc).isoformat()
     }
 
 
@@ -234,7 +234,7 @@ def system_state():
         "redis": redis_metrics,
         "jwt_sessions": jwt_sessions,
         "request_throughput": request_metrics,
-        "timestamp": datetime.utcnow().isoformat()
+        "timestamp": datetime.now(timezone.utc).isoformat()
     }
 
 
@@ -389,7 +389,7 @@ async def internal_error_handler(request: Request, exc):
         content={
             "error": "Internal server error",
             "message": "An unexpected error occurred",
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
     )
 

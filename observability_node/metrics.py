@@ -9,7 +9,7 @@ All functions are read-only and safe to call in production.
 """
 
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 import psutil
@@ -71,12 +71,12 @@ def get_system_metrics() -> Dict[str, Any]:
                 "total_gb": round(disk_total_gb, 2)
             },
             "load_averages": load_averages,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
     except Exception as e:
         return {
             "error": f"Failed to collect system metrics: {str(e)}",
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
 
 
@@ -119,7 +119,7 @@ def get_database_metrics(db) -> Dict[str, Any]:
             return {
                 "status": "disconnected",
                 "error": connection_status,
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat()
             }
         
         # Get basic statistics
@@ -128,13 +128,13 @@ def get_database_metrics(db) -> Dict[str, Any]:
         return {
             "status": "connected",
             "statistics": stats,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
     except Exception as e:
         return {
             "status": "error",
             "error": str(e),
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
 
 
@@ -152,7 +152,7 @@ def get_redis_metrics(redis_client: Optional[Any]) -> Dict[str, Any]:
         return {
             "status": "disabled",
             "message": "Redis is not configured",
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
     
     try:
@@ -175,13 +175,13 @@ def get_redis_metrics(redis_client: Optional[Any]) -> Dict[str, Any]:
                     info.get("keyspace_misses", 0)
                 )
             },
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
     except Exception as e:
         return {
             "status": "error",
             "error": str(e),
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
 
 
@@ -206,5 +206,5 @@ def get_request_metrics() -> Dict[str, Any]:
     return {
         "message": "Request metrics tracking not yet implemented",
         "note": "Implement via middleware or external metrics collector",
-        "timestamp": datetime.utcnow().isoformat()
+        "timestamp": datetime.now(timezone.utc).isoformat()
     }

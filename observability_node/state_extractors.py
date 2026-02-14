@@ -8,7 +8,7 @@ All functions are read-only and do not trigger any scoring, matching,
 or forecasting operations.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 import numpy as np
@@ -31,7 +31,7 @@ def get_gsti_state(db) -> Dict[str, Any]:
             return {
                 "status": "no_data",
                 "message": "No GSTI metrics available",
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat()
             }
         
         # Extract key metrics
@@ -42,13 +42,13 @@ def get_gsti_state(db) -> Dict[str, Any]:
             "economic_regime": latest_metrics.get("market_regime"),
             "confidence_score": latest_metrics.get("gsti_score"),
             "last_update": latest_metrics.get("timestamp"),
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
     except Exception as e:
         return {
             "status": "error",
             "error": str(e),
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
 
 
@@ -69,7 +69,7 @@ def get_amp_state(db) -> Dict[str, Any]:
             return {
                 "status": "no_data",
                 "message": "No candidates registered",
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat()
             }
         
         # Get token distribution for credential weighting
@@ -98,13 +98,13 @@ def get_amp_state(db) -> Dict[str, Any]:
             "merit_score_distribution": score_distribution,
             "credential_weighting": credential_stats,
             "last_evaluation": "N/A",  # Would track from activity logs
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
     except Exception as e:
         return {
             "status": "error",
             "error": str(e),
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
 
 
@@ -126,7 +126,7 @@ def get_forecast_state(db) -> Dict[str, Any]:
             return {
                 "status": "no_data",
                 "message": "No GSTI data for forecast generation",
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat()
             }
         
         regime = latest_gsti.get("market_regime", "unknown")
@@ -152,13 +152,13 @@ def get_forecast_state(db) -> Dict[str, Any]:
             "talent_flow_indicators": talent_flow,
             "macroeconomic_signals": macro_signals,
             "model_confidence": _calculate_model_confidence(latest_gsti),
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
     except Exception as e:
         return {
             "status": "error",
             "error": str(e),
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
 
 
@@ -180,7 +180,7 @@ def get_audit_summary(db, limit: int = 50) -> Dict[str, Any]:
             return {
                 "status": "no_data",
                 "message": "No audit logs available",
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat()
             }
         
         # Anonymize and summarize
@@ -206,13 +206,13 @@ def get_audit_summary(db, limit: int = 50) -> Dict[str, Any]:
             "total_entries": len(logs),
             "recent_entries": summaries[:limit],
             "mutation_summary": mutation_counts,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
     except Exception as e:
         return {
             "status": "error",
             "error": str(e),
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
 
 
@@ -311,7 +311,7 @@ def _calculate_model_confidence(gsti_metrics: Dict[str, Any]) -> Dict[str, Any]:
         
         # Parse timestamp
         last_update = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
-        time_since_update = (datetime.utcnow() - last_update).total_seconds() / 3600  # hours
+        time_since_update = (datetime.now(timezone.utc) - last_update).total_seconds() / 3600  # hours
         
         if time_since_update < 1:
             confidence = "high"
