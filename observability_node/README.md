@@ -48,7 +48,7 @@ Access at: http://localhost:8081
 
 ```bash
 # Run integration tests
-python observability_node/test_integration.py
+python observability_node/run_integration.py
 
 # Expected output: 12/12 tests passed
 ```
@@ -100,7 +100,7 @@ observability_node/
 ├── metrics.py            # System metrics collection
 ├── state_extractors.py   # Intelligence engine state
 ├── run.py                # Standalone runner
-├── test_integration.py   # Integration tests
+├── run_integration.py    # Integration tests
 ├── QUICKSTART.md         # Deployment guide
 ├── SECURITY.md           # Security documentation
 └── README.md             # This file
