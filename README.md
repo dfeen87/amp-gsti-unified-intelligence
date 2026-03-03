@@ -6,7 +6,6 @@
 
 [![Version](https://img.shields.io/badge/version-v2.0.0-blue.svg)](https://github.com/dfeen87/amp-gsti-unified-intelligence/releases)
 [![Status](https://img.shields.io/badge/status-production--ready-success.svg)](https://github.com/dfeen87/amp-gsti-unified-intelligence)
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.100+-009688.svg)](https://fastapi.tiangolo.com/)
 [![Security](https://img.shields.io/badge/security-hardened-red.svg)](docs/SECURITY.md)
@@ -485,9 +484,8 @@ This project was developed with a combination of original ideas, hands‑on codi
 
 ## License
 
-**MIT License** — Permissive, commercial-friendly.
-
-See [`LICENSE`](LICENSE) for full terms.
+This project is available for **non‑commercial use only** under the terms of the included LICENSE file.  
+Commercial use requires a separate paid license.
 
 ---
 
