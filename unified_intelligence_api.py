@@ -45,18 +45,24 @@ This file serves as both:
 1) a runnable intelligence system
 2) a reference implementation of AMP-GSTI concepts
 
-Version: 1.0.0
-Status: Initial Public Release
+Version: 3.1.0
+Status: Production Release
 """
 
-from collections import defaultdict
-from datetime import datetime
+import logging
+import math
+import re
+from collections import defaultdict, deque
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
 import numpy as np
 from fastapi import FastAPI, HTTPException, Query
-from pydantic import BaseModel, Field
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, Field, field_validator
+
+logger = logging.getLogger(__name__)
 
 # ============================================================================
 # CORE DATA MODELS
@@ -81,11 +87,20 @@ class SoulboundToken(BaseModel):
     issue_date: str
     verification_hash: str = Field(default="0x0000...0000")
 
+MAX_CANDIDATES = 10_000
+
 class Candidate(BaseModel):
     wallet_address: str
-    tokens: List[SoulboundToken]
+    tokens: List[SoulboundToken] = Field(max_length=50)
     years_experience: int
     base_predictive_score: float = Field(ge=0, le=100)
+
+    @field_validator("wallet_address")
+    @classmethod
+    def validate_wallet_address(cls, v: str) -> str:
+        if not re.fullmatch(r"0x[a-fA-F0-9]{40}", v):
+            raise ValueError("wallet_address must match ^0x[a-fA-F0-9]{40}$")
+        return v.lower()
     
 class HiringQuery(BaseModel):
     required_skills: List[str] = []
@@ -116,7 +131,7 @@ class GSTIEngine:
         self.w2 = 0.4  # Consumer Goodwill weight
         self.w_goodwill = 1.0
         self.w_gsr = 0.01
-        self._historical_ugs = []
+        self._historical_ugs: deque = deque(maxlen=1000)
         
     def calculate_general_goodwill(
         self, 
@@ -136,7 +151,7 @@ class GSTIEngine:
     ) -> float:
         """Consumer Goodwill (CG) - Immediate external perception"""
         if NCB_consumer == 0:
-            NCB_consumer = 0.001
+            raise ValueError("NCB_consumer cannot be zero")
         return (CS * BR * CA * SS) / NCB_consumer
     
     def calculate_ugs(self, G: float, CG: float, T: float) -> float:
@@ -176,10 +191,17 @@ class GSTIEngine:
             self.w_goodwill = 1.0
     
     def calculate_gsti(self, gold_price: float, silver_price: float) -> Dict[str, Any]:
-        """Calculate complete GSTI metrics"""
+        """Calculate complete GSTI metrics.
+
+        Non-finite intermediate values (NaN/Inf) are clamped to 0.0 before
+        regime classification, which maps to a NEUTRAL regime.  This prevents
+        upstream calculation errors from propagating silently to API consumers.
+        """
         gsr = self.calculate_gsr(gold_price, silver_price)
         momentum = self.calculate_goodwill_momentum()
         gsti = (self.w_goodwill * momentum) - (self.w_gsr * gsr)
+        if not math.isfinite(gsti):
+            gsti = 0.0  # Default to neutral on non-finite
         
         # Determine market regime
         if gsti > 0.05:
@@ -194,7 +216,7 @@ class GSTIEngine:
             "goodwill_momentum": momentum,
             "gsti_score": gsti,
             "market_regime": regime,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
 
 # ============================================================================
@@ -302,7 +324,10 @@ class AMPMatchingEngine:
                 score *= 0.98  # Slight penalty for over-stability in growth mode
                 
         # Cap at 100
-        return min(score, 100.0)
+        score = min(score, 100.0)
+        if not math.isfinite(score):
+            return base_score  # Fall back to base score on non-finite result
+        return score
     
     def match_candidates(
         self,
@@ -362,7 +387,15 @@ class AMPMatchingEngine:
 app = FastAPI(
     title="AMP-GSTI Unified Intelligence API",
     description="Production API for merit-based talent matching with macroeconomic intelligence",
-    version="1.0.0"
+    version="3.1.0"
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "http://localhost:8000"],
+    allow_methods=["GET", "POST"],
+    allow_headers=["Authorization", "Content-Type"],
+    allow_credentials=True,
 )
 
 # Initialize engines
@@ -395,7 +428,7 @@ def root():
     return {
         "status": "operational",
         "api": "AMP-GSTI Unified Intelligence",
-        "version": "1.0.0",
+        "version": "3.1.0",
         "endpoints": {
             "market": "/market/gsti",
             "candidates": "/candidates/query",
@@ -408,7 +441,7 @@ def health_check():
     """Simple health check endpoint"""
     return {
         "status": "healthy",
-        "timestamp": datetime.utcnow().isoformat()
+        "timestamp": datetime.now(timezone.utc).isoformat()
     }
 
 # ---------- MARKET INTELLIGENCE ----------
@@ -417,17 +450,17 @@ def health_check():
 def update_gsti(
     gold_price: float = Query(..., description="Current gold price (USD/oz)", gt=0),
     silver_price: float = Query(..., description="Current silver price (USD/oz)", gt=0),
-    CR: float = Query(0.85, description="Customer Retention"),
-    ES: float = Query(0.75, description="Employee Satisfaction"),
-    BT: float = Query(0.80, description="Brand Trust"),
+    CR: float = Query(0.85, description="Customer Retention", ge=0, le=1),
+    ES: float = Query(0.75, description="Employee Satisfaction", ge=0, le=1),
+    BT: float = Query(0.80, description="Brand Trust", ge=0, le=1),
     RG: float = Query(1.05, description="Revenue Growth factor"),
-    NCB: float = Query(0.1, description="Net Customer Backlash"),
-    CS: float = Query(0.90, description="Customer Satisfaction"),
-    BR: float = Query(0.85, description="Brand Reputation"),
-    CA: float = Query(0.70, description="Customer Advocacy"),
-    SS: float = Query(0.80, description="Service Speed"),
-    NCB_consumer: float = Query(0.05, description="Consumer Backlash"),
-    VIX: float = Query(20.0, description="Market volatility index"),
+    NCB: float = Query(0.1, description="Net Customer Backlash", ge=0),
+    CS: float = Query(0.90, description="Customer Satisfaction", ge=0, le=1),
+    BR: float = Query(0.85, description="Brand Reputation", ge=0, le=1),
+    CA: float = Query(0.70, description="Customer Advocacy", ge=0, le=1),
+    SS: float = Query(0.80, description="Service Speed", ge=0, le=1),
+    NCB_consumer: float = Query(0.05, description="Consumer Backlash", ge=0),
+    VIX: float = Query(20.0, description="Market volatility index", ge=0),
     M_A_Surges: bool = Query(False, description="M&A activity surge flag")
 ):
     """
@@ -465,7 +498,8 @@ def update_gsti(
         }
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"GSTI calculation error: {str(e)}")
+        logger.exception("GSTI calculation error: %s", e)
+        raise HTTPException(status_code=500, detail="GSTI calculation error — check server logs for details")
 
 @app.get("/market/gsti")
 def get_gsti_metrics():
@@ -518,6 +552,10 @@ def register_candidate(candidate: Candidate):
     """Register a new candidate with SBT credentials"""
     global CANDIDATE_DB
     
+    # Enforce capacity limit
+    if len(CANDIDATE_DB) >= MAX_CANDIDATES:
+        raise HTTPException(status_code=400, detail="Candidate registry is at capacity")
+
     # Check for duplicate wallet
     if any(c.wallet_address == candidate.wallet_address for c in CANDIDATE_DB):
         raise HTTPException(status_code=400, detail="Wallet address already registered")
@@ -551,7 +589,7 @@ def query_candidates(query: HiringQuery):
     
     return {
         "status": "success",
-        "query": query.dict(),
+        "query": query.model_dump(),
         "market_regime": gsti_metrics.get("market_regime") if gsti_metrics else "unknown",
         "regime_adjustment_applied": query.consider_market_regime and gsti_metrics is not None,
         "total_candidates_screened": len(CANDIDATE_DB),
@@ -608,7 +646,7 @@ def system_status():
                 "current_regime": MARKET_STATE.get("market_regime", "unknown") if MARKET_STATE else "unknown"
             }
         },
-        "timestamp": datetime.utcnow().isoformat()
+        "timestamp": datetime.now(timezone.utc).isoformat()
     }
 
 @app.post("/system/reset")
@@ -620,12 +658,12 @@ def reset_system(confirm: bool = Query(False)):
     global CANDIDATE_DB, MARKET_STATE
     CANDIDATE_DB = []
     MARKET_STATE = {}
-    gsti_engine._historical_ugs = []
+    gsti_engine._historical_ugs.clear()
     
     return {
         "status": "success",
         "message": "System reset complete",
-        "timestamp": datetime.utcnow().isoformat()
+        "timestamp": datetime.now(timezone.utc).isoformat()
     }
 
 # ---------- INTELLIGENCE ENDPOINTS ----------
