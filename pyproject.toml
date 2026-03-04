@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "amp-gsti-unified-intelligence"
-version = "1.1.0"
+version = "3.1.0"
 description = "AMP-GSTI: A production-grade intelligence API for anonymous merit evaluation and macroeconomic trust signaling."
 readme = "README.md"
 license = { text = "MIT" }
@@ -24,9 +24,9 @@ keywords = [
 ]
 
 dependencies = [
-    "fastapi>=0.110",
-    "uvicorn>=0.29",
-    "pydantic>=2.6",
+    "fastapi>=0.115",
+    "uvicorn>=0.34",
+    "pydantic>=2.10",
     "python-dotenv>=1.0"
 ]
 
@@ -40,9 +40,9 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/your-org/amp-gsti-unified-intelligence"
-Repository = "https://github.com/your-org/amp-gsti-unified-intelligence"
-Issues = "https://github.com/your-org/amp-gsti-unified-intelligence/issues"
+Homepage = "https://github.com/dfeen87/amp-gsti-unified-intelligence"
+Repository = "https://github.com/dfeen87/amp-gsti-unified-intelligence"
+Issues = "https://github.com/dfeen87/amp-gsti-unified-intelligence/issues"
 
 # ===============================
 # Tooling configuration (optional, safe defaults)

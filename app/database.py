@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Generator
 
 from sqlalchemy import (
@@ -47,7 +47,7 @@ class User(Base):
     # Token revocation lever: bump to invalidate prior JWTs if you include it in JWT claims.
     token_version = Column(Integer, default=0, nullable=False, server_default=text("0"))
 
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
+    created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
 
 
 class CandidateDB(Base):
@@ -63,8 +63,8 @@ class CandidateDB(Base):
     years_experience = Column(Integer, nullable=False)
     base_predictive_score = Column(Float, nullable=False)
 
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
-    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow, index=True)
+    created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
+    updated_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), index=True)
 
 
 class GSTIMetricDB(Base):
@@ -86,7 +86,7 @@ class GSTIMetricDB(Base):
     unified_goodwill_score = Column(Float, nullable=True)
     vix = Column(Float, nullable=True)
 
-    timestamp = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
+    timestamp = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
 
 
 class ActivityLog(Base):
@@ -99,7 +99,7 @@ class ActivityLog(Base):
     action = Column(String(128), nullable=False, index=True)
     details = Column(JSON, nullable=False, server_default=text("'{}'::json"))
 
-    timestamp = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
+    timestamp = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
 
 
 # Helpful composite indexes
@@ -175,7 +175,7 @@ class Database:
     def save_candidate(self, candidate) -> int:
         session = self.get_session()
         try:
-            tokens_list = [token.dict() for token in getattr(candidate, "tokens", [])] or []
+            tokens_list = [token.model_dump() for token in getattr(candidate, "tokens", [])] or []
 
             db_candidate = CandidateDB(
                 wallet_address=candidate.wallet_address,
@@ -312,7 +312,7 @@ class Database:
     def get_gsti_history(self, days: int) -> List[Dict[str, Any]]:
         session = self.get_session()
         try:
-            cutoff = datetime.utcnow() - timedelta(days=int(days))
+            cutoff = datetime.now(timezone.utc) - timedelta(days=int(days))
             metrics = (
                 session.query(GSTIMetricDB)
                 .filter(GSTIMetricDB.timestamp >= cutoff)
