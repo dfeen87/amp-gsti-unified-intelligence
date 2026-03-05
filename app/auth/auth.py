@@ -1,16 +1,16 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
-from typing import Optional, Dict, Any
-
 import secrets
+from datetime import datetime, timedelta, timezone
+from typing import Any, Dict, Optional
+
+from fastapi import Header, HTTPException
 from jose import JWTError, jwt
 from passlib.context import CryptContext
-from fastapi import HTTPException, Header
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from app.config import settings
-from app.database import get_db, User
+from app.database import User, get_db
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 

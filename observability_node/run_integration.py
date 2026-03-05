@@ -7,9 +7,9 @@ Tests all endpoints and verifies read-only behavior.
 """
 
 import sys
-import requests
 import time
 
+import requests
 
 BASE_URL = "http://localhost:8081"
 

@@ -15,7 +15,6 @@ SECURITY NOTES:
 
 import os
 from datetime import datetime, timezone
-from typing import Optional
 
 from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.responses import JSONResponse
@@ -23,19 +22,18 @@ from fastapi.responses import JSONResponse
 # Import observability modules
 from observability_node import __version__
 from observability_node.metrics import (
-    get_system_metrics,
-    get_uptime,
     get_database_metrics,
     get_redis_metrics,
     get_request_metrics,
+    get_system_metrics,
+    get_uptime,
 )
 from observability_node.state_extractors import (
-    get_gsti_state,
     get_amp_state,
-    get_forecast_state,
     get_audit_summary,
+    get_forecast_state,
+    get_gsti_state,
 )
-
 
 # ============================================================================
 # APPLICATION SETUP
