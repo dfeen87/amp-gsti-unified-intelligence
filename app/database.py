@@ -1,23 +1,23 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional, Generator
+from typing import Any, Dict, Generator, List, Optional
 
 from sqlalchemy import (
-    create_engine,
-    Column,
-    Integer,
-    String,
-    Float,
-    DateTime,
-    Boolean,
     JSON,
+    Boolean,
+    Column,
+    DateTime,
+    Float,
     ForeignKey,
     Index,
+    Integer,
+    String,
+    create_engine,
     text,
 )
-from sqlalchemy.orm import declarative_base, sessionmaker, Session
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session, declarative_base, sessionmaker
 
 from app.config import settings
 
@@ -187,7 +187,7 @@ class Database:
             session.commit()
             session.refresh(db_candidate)
             return db_candidate.id
-        except SQLAlchemyError as e:
+        except SQLAlchemyError:
             session.rollback()
             raise
         finally:

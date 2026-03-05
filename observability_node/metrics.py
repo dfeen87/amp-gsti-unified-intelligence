@@ -14,7 +14,6 @@ from typing import Any, Dict, Optional
 
 import psutil
 
-
 # Track startup time for uptime calculation
 START_TIME = time.time()
 

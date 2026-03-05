@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-from typing import Optional, Dict, Any
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel, Field, EmailStr, constr
+from pydantic import BaseModel, EmailStr, constr
 
 from app.auth.auth import AuthManager, get_current_user
-from app.database import get_db, User  # your database.py exports these
-
+from app.database import User, get_db
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 

@@ -1,4 +1,4 @@
-from .candidate import Candidate, SoulboundToken, SBTType
+from .candidate import Candidate, SBTType, SoulboundToken
 from .market import GSTIMetrics, MarketRegime, MarketUpdate
 from .query import HiringQuery, QueryResult
 
