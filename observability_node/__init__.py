@@ -11,7 +11,7 @@ This node is designed to be:
 - Production-ready: graceful degradation, proper error handling
 - Independent: runs separately from main API
 
-Version: 1.0.0
+Version: 3.1.1
 """
 
-__version__ = "1.0.0"
+__version__ = "3.1.1"

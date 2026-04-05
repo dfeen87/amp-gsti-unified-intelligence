@@ -161,6 +161,6 @@ This repository favors **clarity and correctness** over buzzwords or inflated cl
 
 ## Versioning
 
-- This security posture applies to **v2.0.0**
+- This security posture applies to **v3.1.1**
 - Future versions may expand authentication, authorization, or cryptographic guarantees
 - **Breaking security changes will be documented explicitly**

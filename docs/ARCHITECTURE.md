@@ -3,7 +3,7 @@
 
 AMP-GSTI is a production-grade intelligence system designed to evaluate human capital as a dynamic, trust-sensitive asset class. The system integrates anonymous merit verification with macroeconomic signal intelligence while maintaining determinism, explainability, and modularity.
 
-This document describes the architectural structure of the v1.0.0 system.
+This document describes the architectural structure of the v3.1.1 system.
 
 ---
 
@@ -87,9 +87,9 @@ The API layer contains **no intelligence logic**.
 
 ## Execution Model
 
-- In-memory execution by default
-- Designed for clarity, experimentation, and validation
-- Persistence is architecture-ready but disabled in v1.0.0
+- PostgreSQL-backed persistence via SQLAlchemy
+- JWT-based authentication, server-authoritative
+- Designed for correctness, auditability, and operational safety
 
 ---
 
@@ -107,5 +107,5 @@ These are intentional exclusions to preserve transparency and auditability.
 
 ## Forward Compatibility
 
-Authentication, persistence, and extended data sources are architecturally prepared and scheduled for later minor releases without modification to core intelligence logic.
+Extended data sources, MFA, and advanced cryptographic attestation remain architecturally prepared for future releases without modification to core intelligence logic.
 
