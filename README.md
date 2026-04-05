@@ -4,9 +4,9 @@
 
 ### Market-Aware, Merit-Based Talent Evaluation
 
-[![Version](https://img.shields.io/badge/version-v2.0.0-blue.svg)](https://github.com/dfeen87/amp-gsti-unified-intelligence/releases)
+[![Version](https://img.shields.io/badge/version-v3.1.1-blue.svg)](https://github.com/dfeen87/amp-gsti-unified-intelligence/releases)
 [![Status](https://img.shields.io/badge/status-production--ready-success.svg)](https://github.com/dfeen87/amp-gsti-unified-intelligence)
-[![Python](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
+[![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.100+-009688.svg)](https://fastapi.tiangolo.com/)
 [![Security](https://img.shields.io/badge/security-hardened-red.svg)](docs/SECURITY.md)
 
@@ -197,7 +197,7 @@ AMP-GSTI follows a **defense-in-depth** approach:
 
 | Requirement | Version |
 |-------------|---------|
-| Python | 3.9+ |
+| Python | 3.10+ |
 | PostgreSQL | 13+ |
 | Redis | Latest (optional, for caching) |
 
@@ -230,7 +230,7 @@ cp .env.example .env
 # Edit .env with your database credentials and secrets
 ```
 
-5️⃣ **Initialize database:**
+5️⃣ **Start the API server** (initializes database schema on first run):
 
 ```bash
 python unified_intelligence_api.py
@@ -262,7 +262,7 @@ Environment variables are documented in [`.env.example`](.env.example).
 |----------|-------------|---------|
 | `DATABASE_URL` | PostgreSQL connection string | `postgresql://user:pass@localhost/db` |
 | `SECRET_KEY` | JWT signing key (≥ 32 chars) | Auto-generated secure string |
-| `ACCESS_TOKEN_EXPIRE_MINUTES` | Token validity duration | `30` |
+| `ACCESS_TOKEN_EXPIRE_MINUTES` | Token validity duration | `60` |
 | `DEBUG` | Debug mode flag | `False` (production) |
 
 ---
@@ -311,7 +311,7 @@ pytest --cov
 
 ## 📊 Global Observability Node
 
-**New in v2.1.0** — A standalone **Global Observability Node** for production monitoring and transparency.
+A standalone **Global Observability Node** provides production monitoring and transparency without exposing any control surfaces.
 
 ### 🎯 What is the Observability Node?
 
@@ -470,7 +470,7 @@ We welcome contributions! Please follow these guidelines:
 
 | Metric | Value |
 |--------|-------|
-| **Current Version** | v2.0.0 |
+| **Current Version** | v3.1.1 |
 | **Stability** | Production-ready |
 | **Focus** | Correctness, auditability, and extensibility |
 
@@ -485,7 +485,7 @@ This project was developed with a combination of original ideas, hands‑on codi
 ## License
 
 This project is available for **non‑commercial use only** under the terms of the included LICENSE file.  
-Commercial use requires a separate paid license.
+Commercial use requires a separate paid license. To inquire, contact: dfeen87@gmail.com
 
 ---
 

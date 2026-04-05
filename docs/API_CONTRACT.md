@@ -1,7 +1,7 @@
 # AMP-GSTI API Contract  
 ## Stability & Interface Guarantees
 
-This document defines the logical API contract for AMP-GSTI v1.0.0.  
+This document defines the logical API contract for AMP-GSTI v3.1.1.  
 It is intended as a human-readable stability reference and does not replace OpenAPI specifications.
 
 ---
@@ -74,21 +74,21 @@ Given identical inputs:
 
 ## Backward Compatibility Policy
 
-- Patch releases (`v1.0.x`) will not change:
+- Patch releases (`v3.1.x`) will not change:
   - Endpoint signatures
   - Score semantics
   - Regime definitions
 
-- Minor releases (`v1.x.0`) may:
+- Minor releases (`v3.x.0`) may:
   - Enable previously scaffolded features
   - Add new endpoints without breaking existing ones
 
 ---
 
-## Deferred Capabilities
+## Implemented Capabilities
 
-- Authentication enforcement
-- Persistent storage
-- Longitudinal analytics
+The following capabilities are active in v3.1.1:
 
-These are intentionally excluded from v1.0.0 behavior.
+- Authentication enforcement (JWT, server-authoritative)
+- Persistent storage (PostgreSQL + SQLAlchemy)
+- Longitudinal audit logging

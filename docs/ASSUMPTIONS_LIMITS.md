@@ -1,5 +1,5 @@
 # AMP-GSTI Assumptions & Limits  
-## Modeling Boundaries for v1.0.0
+## Modeling Boundaries for v3.1.1
 
 This document outlines the assumptions, constraints, and limits of the AMP-GSTI system to support responsible use and accurate interpretation.
 
@@ -31,7 +31,7 @@ This document outlines the assumptions, constraints, and limits of the AMP-GSTI 
 
 ## Simulation vs Reality
 
-v1.0.0 includes simulation tooling for:
+The platform includes simulation tooling for:
 
 - Candidate generation
 - Market signal population

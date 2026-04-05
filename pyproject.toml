@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "amp-gsti-unified-intelligence"
-version = "3.1.0"
+version = "3.1.1"
 description = "AMP-GSTI: A production-grade intelligence API for anonymous merit evaluation and macroeconomic trust signaling."
 readme = "README.md"
 license = { file = "LICENSE" }
